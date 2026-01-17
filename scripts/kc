@@ -1,0 +1,36 @@
+#!/bin/bash
+# Kilocode CLI wrapper with autonomous mode for local Ollama
+# Usage:
+#   kc "Implement feature X"           # Autonomous with prompt
+#   kc -t 600 "Run all tests"          # With custom timeout
+#   kc -i                              # Interactive mode
+
+# Check if running in interactive mode
+if [[ "$1" == "-i" || "$1" == "--interactive" ]]; then
+    shift
+    exec kilocode "$@"
+fi
+
+# Parse timeout flag (consume ALL -t/--timeout flags to avoid duplicates)
+TIMEOUT="${KC_TIMEOUT:-600}"
+PROMPT_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -t|--timeout)
+            TIMEOUT="$2"
+            shift 2
+            ;;
+        *)
+            PROMPT_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Autonomous mode with script/PTY for proper terminal handling
+# Using script command to allocate a PTY for kilocode's Ink TUI
+if command -v script &>/dev/null; then
+    exec script -q -c "kilocode --auto --timeout $TIMEOUT ${PROMPT_ARGS[*]}" /dev/null
+else
+    exec kilocode --auto --timeout "$TIMEOUT" "${PROMPT_ARGS[@]}"
+fi

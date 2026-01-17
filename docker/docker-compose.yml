@@ -1,0 +1,119 @@
+name: wfhub-v2
+
+services:
+  # PostgreSQL database for v2
+  db:
+    image: postgres:16
+    container_name: wfhub-v2-db
+    hostname: wfhub-v2-db
+    env_file:
+      - ../.env
+    ports:
+      - "5433:5432"
+    volumes:
+      - wfhub_v2_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wfhub -d agentic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Ollama LLM - shares model cache with root Ollama
+  ollama:
+    image: ollama/ollama:latest
+    container_name: wfhub-v2-ollama
+    hostname: wfhub-v2-ollama
+    env_file:
+      - ../.env
+    environment:
+      # Performance optimizations
+      # - OLLAMA_DEBUG=1                  # Disabled - too verbose
+      - OLLAMA_NUM_PARALLEL=1             # Single request at a time (saves VRAM)
+      - OLLAMA_MAX_LOADED_MODELS=1        # Only one model in memory
+      - OLLAMA_KEEP_ALIVE=1h              # Keep model loaded for 1 hour
+      - OLLAMA_GPU_OVERHEAD=0             # Minimize GPU memory overhead
+      - OLLAMA_FLASH_ATTENTION=1          # Enable flash attention if supported
+      - CUDA_VISIBLE_DEVICES=0            # Use first GPU
+      # VRAM allocation - reserve 3GB for model
+      - OLLAMA_MAX_VRAM=3221225472        # 3GB in bytes
+    ports:
+      - "11435:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # Share root Ollama's model cache - no re-downloading
+      - wfhub_ollama_data:/root/.ollama
+      # Mount init scripts and Modelfile
+      - ./ollama-init.sh:/opt/ollama-init.sh:ro
+      - ./Modelfile.qwen-coder-optimized:/opt/Modelfile:ro
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Main API - CRUD for projects/tasks
+  main-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.main-api
+    container_name: wfhub-v2-main-api
+    hostname: wfhub-v2-main-api
+    env_file:
+      - ../.env
+    environment:
+      - POSTGRES_HOST=wfhub-v2-db
+      - POSTGRES_PORT=5432
+      - AIDER_API_URL=http://wfhub-v2-aider-api:8001
+      - OLLAMA_PROXY_TARGET=http://wfhub-v2-ollama:11434
+      - PROJECT_ROOT=/app  # For [%root%] path variable
+    ports:
+      - "8002:8002"
+    volumes:
+      - ..:/app  # Mount v2 root - code changes reflect immediately
+      - ../workspaces:/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for log streaming
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Coding Agent API - aider + tools
+  aider-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.aider-api
+    container_name: wfhub-v2-aider-api
+    hostname: wfhub-v2-aider-api
+    env_file:
+      - ../.env
+    environment:
+      - OLLAMA_API_BASE=http://wfhub-v2-main-api:8002/ollama
+      - PORT=${AIDER_API_PORT}
+      - WORKSPACES_DIR=/v2/workspaces
+      - PROJECT_ROOT=/v2  # For [%root%] path variable
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "${AIDER_API_PORT}:${AIDER_API_PORT}"
+    volumes:
+      - ../workspaces:/workspaces
+      - ..:/v2  # Mount v2 root - code changes reflect immediately
+    working_dir: /v2/workspaces
+    entrypoint: ["python", "/v2/scripts/aider_api.py"]  # Run from mount, not copied /app
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  wfhub_v2_pgdata:
+  # Use root's Ollama data volume (already has models)
+  wfhub_ollama_data:
+    external: true

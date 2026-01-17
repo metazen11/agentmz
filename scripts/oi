@@ -1,0 +1,19 @@
+#!/bin/bash
+# Open Interpreter with local Ollama
+# Usage: oi [additional args]
+#   oi                          # Interactive mode
+#   oi -y "list files"          # Auto-approve commands
+#   OI_MODEL=qwen3:4b oi        # Use different model
+
+MODEL="${OI_MODEL:-qwen2.5-coder:3b}"
+API_BASE="${OLLAMA_API_BASE:-http://localhost:11434}"
+
+# Suppress pkg_resources deprecation warning (appears during import)
+export PYTHONWARNINGS="ignore::UserWarning"
+
+exec interpreter \
+  --model "ollama/$MODEL" \
+  --api_base "$API_BASE" \
+  --context_window 32768 \
+  --max_tokens 4096 \
+  "$@"

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Aider with local Ollama
+# Usage: ai [additional args]
+
+MODEL="${AIDER_MODEL:-qwen2.5-coder:3b}"
+
+exec aider \
+  --model "ollama/$MODEL" \
+  "$@"

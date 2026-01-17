@@ -1,0 +1,31 @@
+# Custom Ollama image with optimized model initialization
+FROM ollama/ollama:latest
+
+# Copy the Modelfile and init script
+COPY docker/Modelfile.qwen-coder-optimized /opt/Modelfile
+COPY docker/ollama-init.sh /opt/ollama-init.sh
+
+# Make init script executable
+RUN chmod +x /opt/ollama-init.sh
+
+# Create a wrapper entrypoint that runs init after Ollama starts
+RUN echo '#!/bin/bash\n\
+# Start Ollama server in background\n\
+ollama serve &\n\
+OLLAMA_PID=$!\n\
+\n\
+# Wait for Ollama to be ready\n\
+echo "Waiting for Ollama to start..."\n\
+until curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do\n\
+    sleep 1\n\
+done\n\
+echo "Ollama is ready"\n\
+\n\
+# Run init script (pull/create models)\n\
+/opt/ollama-init.sh &\n\
+\n\
+# Wait for Ollama server\n\
+wait $OLLAMA_PID\n\
+' > /opt/entrypoint.sh && chmod +x /opt/entrypoint.sh
+
+ENTRYPOINT ["/opt/entrypoint.sh"]

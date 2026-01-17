@@ -1,0 +1,678 @@
+# Session Handoff - v2 MVP Migration
+
+**Date:** 2026-01-11
+**Session Goal:** Complete v2 MVP with Aider integration for POC workspace editing
+
+---
+
+## Context
+
+Development got off track - work was being done in the root folder instead of v2. This session focuses on:
+1. Migrating necessary components to v2
+2. Renaming "agentic" to "wfhub" (Workflow Hub)
+3. Completing MVP: Create/edit files in `v2/workspaces/poc` via Aider
+
+---
+
+## Current State
+
+### v2 (target - build here)
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| FastAPI app | Done | `v2/main.py` |
+| Database models | Done | `v2/models.py` |
+| Alembic migrations | Done | `v2/alembic/` |
+| Aider runner | Done | `v2/agent/aider_runner.py` |
+| Ollama runner | Done | `v2/agent/runner.py` (not using for MVP) |
+| Director loop | Done | `v2/director.py` |
+| Playwright tests | Done | `v2/tests/` |
+| POC workspace | Exists | `v2/workspaces/poc/` |
+| Docker compose | **TODO** | Create `v2/docker/docker-compose.yml` |
+| Trigger endpoint wiring | **TODO** | Wire `/tasks/{id}/trigger` |
+
+### Root (reference - keep for v1.5)
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| Aider API server | Migrate to v2 | `scripts/aider_api.py` |
+| Docker compose | Reference | `docker/docker-compose.yml` |
+| Dockerfile.aider-api | Copy to v2 | `docker/Dockerfile.aider-api` |
+| Django app | Keep as v1.5 | `app/` |
+| Director service | Keep as v1.5 | `app/services/director_service.py` |
+
+---
+
+## MVP Scope
+
+**Goal:** Trigger a task via API, have Aider create/edit a file in poc workspace, return result.
+
+**Flow:**
+```
+POST /tasks/{id}/trigger
+    → Get task + project from DB
+    → Call aider_runner.run_agent(workspace="poc", ...)
+    → Aider API creates/edits file
+    → Return result.json
+```
+
+**Model:** qwen3:4b via Ollama
+
+**Out of scope:**
+- Director daemon automation
+- Pipeline stages beyond dev
+- Container isolation
+- Complex pipeline config
+
+---
+
+## Implementation Plan
+
+### 1. Rename agentic → wfhub
+- Docker container names
+- Docker compose stack name
+- Database name
+
+### 2. Migrate Aider Infrastructure
+```
+scripts/aider_api.py → v2/scripts/aider_api.py
+docker/Dockerfile.aider-api → v2/docker/Dockerfile.aider-api
+```
+
+### 3. Create v2 Docker Compose
+```yaml
+name: wfhub-v2
+services:
+  db: ...       # PostgreSQL on 5433
+  ollama: ...   # Or reuse root's on 11434
+  aider-api: ...# Port 8001
+```
+
+### 4. Wire Trigger Endpoint
+Update `v2/main.py`:
+```python
+@app.post("/tasks/{task_id}/trigger")
+def trigger_task(...):
+    # Get task/project
+    # Call aider_runner.run_agent()
+    # Update status based on result
+```
+
+### 5. Test End-to-End
+```bash
+# Create project pointing to poc
+curl -X POST localhost:8002/projects -d '{"name":"POC","workspace_path":"poc"}'
+
+# Create task
+curl -X POST localhost:8002/tasks -d '{"project_id":1,"title":"Create hello.txt"}'
+
+# Trigger
+curl -X POST localhost:8002/tasks/1/trigger
+
+# Verify
+cat v2/workspaces/poc/hello.txt
+```
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `v2/main.py` | FastAPI app (port 8002) |
+| `v2/agent/aider_runner.py` | Calls Aider API |
+| `v2/scripts/aider_api.py` | HTTP wrapper for Aider CLI (to create) |
+| `v2/docker/docker-compose.yml` | v2-specific Docker stack (to create) |
+| `v2/workspaces/poc/` | Test workspace |
+| `v2/tests/test_browser_hello_world.py` | Playwright tests |
+
+---
+
+## Environment
+
+- Ollama: localhost:11434 (root Docker or native)
+- Aider API: localhost:8001 (when running)
+- v2 FastAPI: localhost:8002
+- PostgreSQL: localhost:5432 (root) or 5433 (v2)
+- Model: qwen3:4b
+
+---
+
+## Commands
+
+```bash
+# Start v2 API
+cd v2 && python main.py
+
+# Start Aider API (from v2 after migration)
+cd v2 && python scripts/aider_api.py
+
+# Run tests
+cd v2 && pytest tests/ -v
+
+# Docker (after compose created)
+cd v2/docker && docker compose up -d
+```
+
+---
+
+## Implementation Status (2026-01-11)
+
+### Completed
+- [x] Created session_handoff.md
+- [x] Renamed "agentic" to "wfhub" in root docker-compose.yml
+- [x] Verified aider_api.py already exists in v2/scripts/
+- [x] Created v2/docker/docker-compose.yml (wfhub naming)
+- [x] Created v2/docker/Dockerfile.aider-api
+- [x] Wired /tasks/{id}/trigger endpoint to call aider_runner
+
+## Implementation Status (2026-01-12)
+
+### Completed
+- [x] Extended v2/scripts/aider_api.py with tools (grep, glob, bash, read)
+- [x] Added /api/agent/run orchestration endpoint with LLM loop
+- [x] Added /api/config endpoint for runtime configuration
+- [x] Added Config class that loads from v2/.env
+- [x] Updated v2/.env with all config variables
+- [x] Updated v2/docker/docker-compose.yml to use env_file
+- [x] Updated v2/docker/Dockerfile.aider-api (ripgrep install)
+- [x] Created v2/start.sh startup script
+- [x] Created v2/tests/test_aider_api.py
+
+### In Progress
+- [ ] Test agent/run endpoint with full task
+
+### Test Results (2026-01-12)
+```
+pytest tests/test_aider_api.py -v
+======================== 29 passed, 1 skipped ========================
+```
+
+**All tool endpoints working:**
+- `/health` - Returns config info
+- `/api/config` - Get/set configuration
+- `/api/grep` - Search file contents (using grep, ripgrep unavailable in container)
+- `/api/glob` - Find files by pattern
+- `/api/read` - Read file contents
+- `/api/bash` - Run shell commands
+
+**Commands to run from v2/:**
+```bash
+# Build and start
+cd v2
+docker compose --env-file .env -f docker/docker-compose.yml build aider-api
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+
+# Run tests
+pytest tests/test_aider_api.py -v
+```
+
+### Testing Notes
+- **Server Restart Required**: After code changes to main.py, restart the v2 server
+- Test project created: id=7, workspace_path="poc"
+- Test task created: id=6, title="Create hello.txt"
+
+### Test Commands
+```bash
+# Restart v2 server (pick up new code)
+# In terminal running v2: Ctrl+C, then:
+cd /mnt/c/dropbox/_coding/agentic/v2 && python main.py
+
+# Then test trigger:
+curl -X POST http://localhost:8002/tasks/6/trigger
+
+# Check result:
+cat v2/workspaces/poc/hello.txt
+```
+
+### End-to-End Test Result (2026-01-11)
+
+**SUCCESS**: Created animated Hello World in `v2/workspaces/poc/index.html`
+
+```bash
+# Run Aider directly in workspace
+cd v2/workspaces/poc
+OLLAMA_API_BASE=http://localhost:11434 aider \
+  --model ollama_chat/qwen2.5-coder:3b \
+  --no-auto-commits --yes \
+  --message "Create index.html with animated Hello World"
+
+# View result
+open v2/workspaces/poc/index.html
+# Or: python -m http.server 8080 -d v2/workspaces/poc
+```
+
+**Note**: qwen3:4b timed out (>5min). qwen2.5-coder:3b worked in ~10 seconds.
+
+---
+
+## Implementation Status (2026-01-12 - Session 2)
+
+### Completed
+- [x] Simplified v2 to 2 containers only (removed v1 complexity)
+- [x] Cleaned up docker-compose.yml to only have db + aider-api
+- [x] Removed v1 files: Dockerfile.main-api, Dockerfile.director, test_main_api.py
+- [x] Verified alembic migrations work (stamp head)
+- [x] All 32 aider_api tests passing
+
+### v2 Simplified Architecture
+```
+v2/
+├── .env                    # All configuration
+├── start.sh                # Startup script
+├── docker/
+│   ├── docker-compose.yml  # 2 services: db + aider-api
+│   └── Dockerfile.aider-api
+├── scripts/
+│   └── aider_api.py        # Coding Agent API (tools + orchestration)
+├── models.py               # SQLAlchemy models (Project, Task)
+├── database.py             # DB connection
+├── alembic/                # Migrations
+├── tests/
+│   └── test_aider_api.py   # 32 tests
+└── workspaces/             # Project workspaces
+    └── poc/                # Default workspace
+```
+
+### Services (Simplified)
+| Container | Port | Purpose |
+|-----------|------|---------|
+| wfhub-v2-db | 5433 | PostgreSQL database |
+| wfhub-v2-aider-api | 8001 | Coding tools (grep, glob, bash, read, aider) + agent orchestration |
+
+### Database Schema (v2 simplified)
+- **projects**: id, name, workspace_path, environment, created_at
+- **tasks**: id, project_id, parent_id (subtasks), title, description, status, stage, created_at
+
+### Key Learning
+- v2 should be simple: 2 tables, 2 containers
+- Don't bring v1 code (main.py, director.py) into v2
+- aider_api.py handles all agent needs (tools + /api/agent/run)
+- Alembic for migrations, SQLAlchemy for models
+
+### POC Game Test Created
+Created `tests/test_poc_game.py` that exercises all tools:
+- Prerequisites: Checks aider-api and Ollama are running
+- Glob: Lists files in workspace
+- Bash: Creates directories, runs commands
+- Aider: Creates a memory matching game
+- Read: Verifies file contents
+- Grep: Searches for code patterns
+
+**Test output (10 passed, 1 skipped in ~2 min):**
+```
+pytest tests/test_poc_game.py -v -s
+```
+
+**Game created:** `v2/workspaces/poc/game/index.html`
+- 4x4 memory matching grid
+- Emoji symbols
+- Click to flip, match pairs to win
+- Moves counter
+
+**View the game:**
+```bash
+cd v2/workspaces/poc/game && python -m http.server 8080
+# Open http://localhost:8080
+```
+
+---
+
+## Implementation Status (2026-01-12 - Session 3)
+
+### Completed
+- [x] Created `container_manager.py` using Docker SDK
+- [x] Dynamic container startup with workspace mounting
+- [x] Shared Ollama model cache (external volume)
+- [x] All 10 POC tests passing (including aider game creation)
+- [x] chat.html verified working with aider-api
+
+### v2 Dynamic Container Architecture
+```
+v2/
+├── container_manager.py    # Docker SDK to start/stop containers dynamically
+├── scripts/
+│   └── aider_api.py        # Coding Agent API (tools + aider)
+├── docker/
+│   ├── docker-compose.yml  # Still available for docker-compose users
+│   └── Dockerfile.aider-api
+├── tests/
+│   ├── test_aider_api.py   # API tests
+│   └── test_poc_game.py    # POC game creation test
+└── workspaces/
+    └── poc/
+        ├── chat.html       # Web UI for aider
+        └── game/           # Created by POC test
+            └── index.html  # Memory matching game
+```
+
+### New Startup Method
+```bash
+# Using Docker SDK (recommended)
+cd v2
+python container_manager.py start --workspace workspaces/poc
+
+# Or still works with docker-compose
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+```
+
+### Container Manager Features
+- Dynamically starts Ollama and aider-api containers
+- Mounts specified workspace into /workspaces
+- Shares model cache via external volume (wfhub_ollama_data)
+- Auto-builds aider-api image if needed
+- Waits for services to be healthy before returning
+- Commands: start, stop, status, cleanup
+
+### Test Results (2026-01-12)
+```
+pytest tests/test_poc_game.py -v -s
+================== 10 passed, 1 skipped in 172.59s ===================
+```
+
+All tools tested:
+- `/health` - Health check
+- `/api/config` - Configuration
+- `/api/glob` - File finding
+- `/api/bash` - Shell commands
+- `/api/aider/execute` - Code generation (created memory game)
+- `/api/read` - File reading
+- `/api/grep` - Code search
+
+### chat.html Working
+The chat UI at `v2/workspaces/poc/chat.html` connects to:
+- `http://localhost:8001/health` - Status check
+- `http://localhost:8001/api/aider/execute` - Code editing
+
+To use:
+```bash
+cd v2/workspaces/poc && python -m http.server 8080
+# Open http://localhost:8080/chat.html
+```
+
+---
+
+## Implementation Status (2026-01-16 - Session 4)
+
+### Completed
+- [x] Added main-api container for CRUD (Projects/Tasks)
+- [x] Volume mounting for code (no copy, changes reflect immediately)
+- [x] Full CRUD endpoints verified (Projects + Tasks)
+- [x] Updated chat.html with sidebar for projects/tasks
+- [x] Project selection switches aider workspace
+- [x] Task selection injects context into prompts
+- [x] Added WebSocket log streaming for container observability
+- [x] Created pyproject.toml for v2 (pytest rootdir fix)
+- [x] All tests passing
+
+### v2 Full Architecture
+```
+v2/
+├── .env                    # All configuration
+├── pyproject.toml          # Python project config
+├── start.sh                # Startup script with --workspace flag
+├── chat.html               # Web UI with projects/tasks/logs
+├── main.py                 # FastAPI CRUD + WebSocket logs
+├── database.py             # SQLAlchemy connection
+├── models.py               # Project, Task models
+├── docker/
+│   ├── docker-compose.yml  # 4 services: db, ollama, main-api, aider-api
+│   ├── Dockerfile.main-api # CRUD API container
+│   └── Dockerfile.aider-api # Coding agent container
+├── scripts/
+│   ├── aider_api.py        # Coding tools + agent orchestration
+│   ├── project_context.py  # Context aggregation from DB/files/discovery
+│   └── discover_project.py # Auto-detect project metadata
+├── tests/
+│   ├── test_aider_api.py   # API tests
+│   ├── test_chat_interface.py # CRUD + logs tests
+│   ├── test_workspace_context.py # E2E context injection
+│   └── test_poc_game.py    # POC game creation
+└── workspaces/
+    ├── poc/                # Default workspace
+    └── beatbridge_app/     # Sample workspace with project.md
+```
+
+### Services
+| Container | Port | Purpose |
+|-----------|------|---------|
+| wfhub-v2-db | 5433 | PostgreSQL database |
+| wfhub-v2-ollama | 11435 | Ollama LLM backend |
+| wfhub-v2-main-api | 8002 | CRUD for Projects/Tasks + WebSocket logs |
+| wfhub-v2-aider-api | 8001 | Coding tools (grep, glob, bash, read, aider) |
+
+### API Endpoints
+
+**Main API (port 8002):**
+- `GET /projects` - List projects
+- `POST /projects` - Create project
+- `GET /projects/{id}` - Get project
+- `DELETE /projects/{id}` - Delete project
+- `GET /projects/{id}/tasks` - List project tasks
+- `POST /tasks` - Create task
+- `GET /tasks/{id}` - Get task
+- `PATCH /tasks/{id}` - Update task
+- `POST /tasks/{id}/trigger` - Trigger agent for task
+- `GET /logs/{container}` - Get container logs
+- `WS /ws/logs/{container}` - Stream container logs
+
+**Aider API (port 8001):**
+- `GET /health` - Health check
+- `GET /api/config` - Get configuration
+- `POST /api/config` - Update configuration (workspace, model)
+- `POST /api/grep` - Search file contents
+- `POST /api/glob` - Find files by pattern
+- `POST /api/read` - Read file contents
+- `POST /api/bash` - Run shell commands
+- `POST /api/aider/execute` - Execute aider task
+- `POST /api/agent/run` - Run full agent loop
+- `POST /api/context` - Get workspace context
+
+### Chat Interface Features
+- Project sidebar with CRUD
+- Task list with status badges
+- Workspace switching on project select
+- Task context injection into prompts
+- Live container log streaming (WebSocket)
+- Tabs for Ollama/Aider/Main API logs
+
+### Quick Start
+```bash
+cd /mnt/c/dropbox/_coding/agentic/v2
+./start.sh
+
+# Serve chat interface
+python -m http.server 8080
+# Open http://localhost:8080/chat.html
+```
+
+---
+
+## Implementation Status (2026-01-16 - Session 5)
+
+### Completed
+- [x] Added task delete endpoint (`DELETE /tasks/{id}`) in `main.py`
+- [x] Extended chat interface tests to cover task update/delete
+- [x] Chat UI now supports task edit/delete with modal and actions
+- [x] Log panel auto-starts on load and falls back to polling when WS fails
+- [x] Log streaming now uses `wss://` when page is served over HTTPS
+- [x] Main API log streaming moved off event loop to avoid HTTP hangs
+- [x] Aider API now ignores BrokenPipe/ConnectionReset when clients disconnect
+- [x] Log tabs now hide/show panes instead of reconnecting on each tab switch
+
+### Notes
+- API tests passed: `pytest tests/test_chat_interface.py -v -k "not aider_execute"`
+- Playwright tests passed: `pytest tests/test_chat_ui.py -v`
+
+---
+
+## Implementation Status (2026-01-16 - Session 6)
+
+### Completed
+- [x] Updated `.env` to use Docker Ollama on port 11435
+- [x] Added git identity config via `GIT_USER_NAME`/`GIT_USER_EMAIL`
+- [x] Aider workspace git init now uses env-provided name/email
+
+### Notes
+- Ollama container `wfhub-v2-ollama` is healthy on `http://localhost:11435`
+
+---
+
+## Implementation Status (2026-01-16 - Session 7)
+
+### Completed
+- [x] Added `run_aider_local.sh` wrapper to run aider from repo root with `.env` loaded
+- [x] Wrapper now defaults to `--subtree-only` to keep scope under `v2/`
+
+### Notes
+- Local `aider` run with git/subtree timed out at 120s; `--no-git` succeeded
+- Wrapper now defaults to `--timeout 600`, `--auto-commits`
+- Wrapper supports `--execute` for headless runs (adds `--yes` + default message)
+- Added `wrapper_init.sh` to register `aicoder` command in shell
+- Wrapper supports `--set-model` and `--set-ollama-base` overrides
+- Added `aicoder_install.sh` to install aider (if missing) and add the wrapper to shell rc files
+
+---
+
+## Implementation Status (2026-01-17 - Session 8)
+
+### Completed
+- [x] Added Ollama HTTP proxy in `main.py` to log request/response details
+- [x] Added internal WebSocket log stream for Ollama HTTP traffic (`/ws/logs/ollama_http`)
+- [x] Added Ollama HTTP tab to `chat.html` log panel
+- [x] Updated Docker compose to route Ollama traffic through the main API proxy
+- [x] Extended log endpoint tests to cover `ollama_http`
+
+### Notes
+- Proxy target uses `OLLAMA_PROXY_TARGET` (falls back to `OLLAMA_API_BASE`)
+- Aider API now points `OLLAMA_API_BASE` to `http://wfhub-v2-main-api:8002/ollama`
+
+---
+
+## Implementation Status (2026-01-17 - Session 9)
+
+### Completed
+- [x] Added `PATCH /projects/{id}` endpoint for project updates
+- [x] Added project edit/delete actions to `chat.html`
+- [x] Added project update/delete API tests and UI modal visibility test
+
+### Notes
+- Project updates support `name`, `workspace_path`, and `environment`
+- `pytest tests/ -v` timed out with widespread failures because main-api/aider-api/Ollama services were not running
+
+---
+
+## Implementation Status (2026-01-17 - Session 10)
+
+### Completed
+- [x] Aider API now prefers `/v2/workspaces` when available
+- [x] Aider container now mounts `/v2` and uses `/v2/workspaces` as working dir
+- [x] Container manager mounts `/v2` and sets `WORKSPACES_DIR=/v2/workspaces`
+
+### Notes
+- Docker compose sets `WORKSPACES_DIR=/v2/workspaces` for aider-api
+
+---
+
+## Implementation Status (2026-01-17 - Session 11)
+
+### Ollama Optimization Work
+
+**Goal:** Optimize Ollama container for faster inference on T500 (4GB VRAM) + 32GB RAM
+
+### Completed
+- [x] Created `.aider.model.settings.yml` with context window configs
+- [x] Added Ollama environment variables to `docker/docker-compose.yml`:
+  - `OLLAMA_DEBUG=1` - Enable debug logging
+  - `OLLAMA_NUM_PARALLEL=1` - Single request at a time (saves VRAM)
+  - `OLLAMA_MAX_LOADED_MODELS=1` - Only one model in memory
+  - `OLLAMA_KEEP_ALIVE=1h` - Keep model loaded for 1 hour
+  - `OLLAMA_GPU_OVERHEAD=0` - Minimize GPU memory overhead
+  - `OLLAMA_FLASH_ATTENTION=1` - Enable flash attention
+  - `OLLAMA_MAX_VRAM=3221225472` - Reserve 3GB for model
+- [x] Created `docker/Modelfile.qwen-coder-optimized` with greedy GPU allocation
+- [x] Created `docker/ollama-init.sh` for auto-creating optimized models
+- [x] Pulled `qwen2.5-coder:14b` (9GB model)
+- [x] Created `qwen-coder-optimized` custom model with:
+  - `num_gpu 99` (greedy GPU allocation, spill to RAM)
+  - `num_ctx 12288` (12k context window)
+  - `temperature 0` (deterministic output for tool calls)
+
+### Benchmark Results (qwen2.5-coder:3b on T500)
+| Test | Tokens | Speed |
+|------|--------|-------|
+| Cold start | 258 | ~4 tok/s |
+| Warm #1 | 45 | 6.0 tok/s |
+| Warm #2 | 62 | 6.1 tok/s |
+| Warm #3 | 142 | 6.5 tok/s |
+
+### Issue: 14B Model Too Slow
+- `qwen-coder-optimized` (14B with 12k context) times out
+- Model shows as loaded: `12 GB, 100% GPU, 12288 context`
+- But requests take >2 minutes (likely CPU offload too slow)
+- **System has 23GB RAM available to WSL** (not full 32GB)
+
+### Next Steps After Reboot
+1. Reboot to free up RAM for WSL
+2. **Turn off OLLAMA_DEBUG=1** to measure performance impact
+3. Test models to benchmark:
+   - `qwen2.5-coder:14b` (already pulled)
+   - `qwen3:8b` - general purpose with good reasoning
+   - `deepseek-coder-v2:lite` - excellent at coding + tool calling
+4. Run comparative benchmarks between models
+5. Create optimized Modelfiles for best performers
+
+### Files Created/Modified
+| File | Purpose |
+|------|---------|
+| `.aider.model.settings.yml` | Aider context window config |
+| `docker/docker-compose.yml` | Added Ollama env vars + volume mounts |
+| `docker/Modelfile.qwen-coder-optimized` | Custom model with greedy GPU |
+| `docker/ollama-init.sh` | Auto-create optimized models on startup |
+| `docker/Dockerfile.ollama` | Custom Ollama image (optional) |
+
+### Commands to Resume
+```bash
+# After reboot, restart services
+cd /mnt/c/dropbox/_coding/agentic/v2
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+
+# Check models
+docker exec wfhub-v2-ollama ollama list
+docker exec wfhub-v2-ollama ollama ps
+
+# Run optimized model init script
+docker exec wfhub-v2-ollama /opt/ollama-init.sh
+
+# Or manually create optimized model
+docker exec wfhub-v2-ollama sh -c 'cat > /tmp/Modelfile << EOF
+FROM qwen2.5-coder:14b
+PARAMETER num_gpu 99
+PARAMETER num_ctx 12288
+PARAMETER temperature 0
+EOF
+ollama create qwen-coder-optimized -f /tmp/Modelfile'
+
+# Benchmark
+time curl -s http://localhost:11435/api/generate -d '{"model":"qwen-coder-optimized","prompt":"Write hello world in Python","stream":false}'
+```
+
+---
+
+## Implementation Status (2026-01-17 - Session 12)
+
+### Completed
+- [x] Installed `psycopg2-binary` in the aider-api image to fix ProjectContext DB load warnings
+
+### Notes
+- Rebuild aider-api image after updates to `docker/Dockerfile.aider-api`
+
+---
+
+## Principles (from coding_principles.md)
+
+- **TDD**: Write tests first
+- **DRY**: Use existing code (aider_runner.py already exists)
+- **Stay Focused**: One task at a time
+- **Graceful Failure**: Try/except with structured errors
+- **Structured JSON**: `{"success": true, ...}` format

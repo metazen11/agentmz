@@ -1,0 +1,604 @@
+# Local LLM API Integration
+
+This guide covers using local LLM inference for the Workflow Hub and CLI tools like Open Interpreter and Kilocode.
+
+---
+
+## Quick Reference
+
+| Service | URL | Use Case |
+|---------|-----|----------|
+| **Ollama** | `http://localhost:11434` | Primary LLM backend (Docker) |
+| Logs | `docker logs -f ollama` | View requests in real-time |
+
+---
+
+## Starting the LLM Stack
+
+```bash
+# Start Ollama
+docker compose -f llm.yaml up -d
+
+# View logs (see requests/responses in real-time)
+docker logs -f ollama
+```
+
+---
+
+## Ollama API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/tags` | List available models |
+| POST | `/api/generate` | Text completion |
+| POST | `/api/chat` | Chat completion |
+| POST | `/v1/chat/completions` | OpenAI-compatible chat |
+| POST | `/v1/models` | OpenAI-compatible model list |
+
+---
+
+## CLI Tool Configuration
+
+### Kilocode (VS Code Extension)
+
+Configure Kilocode to use local Ollama:
+
+1. Open VS Code settings
+2. Search for "Kilocode"
+3. Set:
+   - **API Base URL**: `http://localhost:11434/v1`
+   - **Model**: `qwen2.5-coder:7b` (or any Ollama model)
+   - **API Key**: `ollama` (any non-empty value)
+
+Or add to `settings.json`:
+```json
+{
+  "kilocode.apiBaseUrl": "http://localhost:11434/v1",
+  "kilocode.model": "qwen2.5-coder:7b",
+  "kilocode.apiKey": "ollama"
+}
+```
+
+### Open Interpreter
+
+Configure Open Interpreter for Ollama:
+
+```bash
+# Set environment variables
+export OLLAMA_HOST=http://localhost:11434
+export OPENAI_API_BASE=http://localhost:11434/v1
+export OPENAI_API_KEY=ollama
+
+# Run with local model
+interpreter --model ollama/qwen2.5-coder:7b
+
+# Or use the wrapper
+oi  # Alias defined below
+```
+
+Add to your shell profile (`~/.bashrc` or `~/.zshrc`):
+```bash
+# Open Interpreter with Ollama
+alias oi='OLLAMA_HOST=http://localhost:11434 interpreter --model ollama/qwen2.5-coder:7b'
+```
+
+### Aider
+
+```bash
+# Set environment
+export OLLAMA_API_BASE=http://localhost:11434
+
+# Run with Ollama
+aider --model ollama/qwen2.5-coder:7b
+```
+
+---
+
+## Available Models
+
+| Model | Size | Best For |
+|-------|------|----------|
+| `deepseek-coder:1.3b` | 776MB | Fast, lightweight tasks |
+| `qwen2.5-coder:3b` | 1.9GB | Good balance of speed/quality |
+| `qwen2.5-coder:7b` | 4.7GB | Best coding quality |
+| `qwen3:4b` | 2.5GB | General purpose |
+| `phi4` | 9GB | Large context, high quality |
+| `llava:7b` | 4.7GB | Vision/multimodal |
+
+Pull models:
+```bash
+docker exec ollama ollama pull qwen2.5-coder:7b
+```
+
+---
+
+## Viewing Request/Response Logs
+
+Ollama with `OLLAMA_DEBUG=1` logs all requests:
+
+```bash
+# Follow logs in real-time
+docker logs -f ollama
+
+# Logs show:
+# - [GIN] 2026/01/10 - 04:52:08 | 200 | POST "/api/generate"
+# - Model loading progress
+# - Token counts and timing
+```
+
+---
+
+## Docker Model Runner (Alternative)
+
+If you prefer Docker Model Runner over Ollama:
+
+| Context | URL |
+|---------|-----|
+| From host machine | `http://localhost:12434/` |
+| From Docker containers | `http://model-runner.docker.internal/` |
+
+### OpenAI-Compatible Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/engines/v1/models` | List available models |
+| POST | `/engines/v1/chat/completions` | Chat completions |
+| POST | `/engines/v1/completions` | Text completions |
+| POST | `/engines/v1/embeddings` | Generate embeddings |
+
+> Note: DMR requires Docker Desktop and is not available in WSL2 by default.
+
+---
+
+## Quick Start
+
+### 1. Pull a Model
+
+```bash
+# List available models
+docker model ls
+
+# Pull from Docker Hub (recommended models)
+docker model pull ai/qwen3-coder        # Best for coding + tool calling
+docker model pull ai/qwen2.5            # General purpose
+docker model pull ai/phi4               # Good balance of size/quality
+docker model pull ai/gemma3             # Google's efficient model
+
+# Pull from HuggingFace with specific quantization
+docker model pull hf.co/bartowski/Qwen3-8B-Instruct-GGUF:Q4_K_M
+```
+
+### 2. Test the API
+
+```bash
+# Simple chat completion
+curl http://localhost:12434/engines/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ai/qwen3-coder",
+    "messages": [{"role": "user", "content": "Hello, what can you do?"}]
+  }'
+
+# With system prompt
+curl http://localhost:12434/engines/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ai/qwen3-coder",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant that writes clear documentation."},
+      {"role": "user", "content": "Document this function: def add(a, b): return a + b"}
+    ]
+  }'
+```
+
+---
+
+## Python Integration
+
+### Basic Client
+
+```python
+import httpx
+from typing import Optional
+
+class DockerModelClient:
+    """Simple client for Docker Model Runner API."""
+
+    def __init__(self, base_url: str = "http://localhost:12434"):
+        self.base_url = base_url
+        self.client = httpx.Client(timeout=120.0)
+
+    def chat(
+        self,
+        messages: list[dict],
+        model: str = "ai/qwen3-coder",
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> str:
+        """Send a chat completion request."""
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature
+        }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+
+        response = self.client.post(
+            f"{self.base_url}/engines/v1/chat/completions",
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+
+    def complete(self, prompt: str, **kwargs) -> str:
+        """Convenience method for single-turn completion."""
+        return self.chat([{"role": "user", "content": prompt}], **kwargs)
+
+# Usage
+client = DockerModelClient()
+result = client.complete("Summarize the purpose of a CI/CD pipeline in 2 sentences.")
+print(result)
+```
+
+### Async Client
+
+```python
+import httpx
+from typing import Optional
+
+class AsyncDockerModelClient:
+    """Async client for Docker Model Runner API."""
+
+    def __init__(self, base_url: str = "http://localhost:12434"):
+        self.base_url = base_url
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str = "ai/qwen3-coder",
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None
+    ) -> str:
+        """Send an async chat completion request."""
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature
+            }
+            if max_tokens:
+                payload["max_tokens"] = max_tokens
+
+            response = await client.post(
+                f"{self.base_url}/engines/v1/chat/completions",
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+
+# Usage
+import asyncio
+
+async def main():
+    client = AsyncDockerModelClient()
+    result = await client.chat([
+        {"role": "system", "content": "You are a requirements analyst."},
+        {"role": "user", "content": "What questions should I ask about a new feature?"}
+    ])
+    print(result)
+
+asyncio.run(main())
+```
+
+---
+
+## Use Cases for Workflow Hub
+
+### 1. Documentation Enrichment
+
+```python
+def enrich_docstring(function_code: str) -> str:
+    """Use local LLM to generate documentation for a function."""
+    client = DockerModelClient()
+
+    prompt = f"""Analyze this Python function and generate a comprehensive docstring.
+Include: purpose, parameters, return value, and example usage.
+
+```python
+{function_code}
+```
+
+Return ONLY the docstring (with triple quotes)."""
+
+    return client.complete(prompt, model="ai/qwen3-coder", temperature=0.3)
+```
+
+### 2. Requirements Gathering Wizard
+
+```python
+def requirements_wizard(project_description: str) -> dict:
+    """Interactive requirements gathering using local LLM."""
+    client = DockerModelClient()
+
+    system_prompt = """You are a software requirements analyst.
+    Given a project description, generate structured requirements.
+    Output JSON with: functional_requirements, non_functional_requirements,
+    user_stories, and suggested_architecture."""
+
+    response = client.chat([
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Project: {project_description}"}
+    ], temperature=0.5)
+
+    import json
+    return json.loads(response)
+```
+
+### 3. Code Review Suggestions
+
+```python
+def review_code(code: str, context: str = "") -> str:
+    """Get code review suggestions from local LLM."""
+    client = DockerModelClient()
+
+    prompt = f"""Review this code for:
+1. Bugs or potential issues
+2. Security concerns
+3. Performance improvements
+4. Code style/readability
+
+Context: {context}
+
+```
+{code}
+```
+
+Provide specific, actionable feedback."""
+
+    return client.complete(prompt, model="ai/qwen3-coder", temperature=0.4)
+```
+
+---
+
+## Recommended Models
+
+### Current Production Models (Workflow Hub)
+
+| Model | Use Case | Pull Command | Notes |
+|-------|----------|--------------|-------|
+| **qwen3-coder-latest** | Code generation, tool calling | `docker model pull ai/qwen3-coder` | Default for all agents |
+| **qwen3-vl** | Vision/screenshots | `docker model pull ai/qwen3-vl` | Screenshot analysis, UI verification |
+
+### For Coding Tasks (with Tool Calling)
+
+| Model | Size | Pull Command | Notes |
+|-------|------|--------------|-------|
+| Qwen3-Coder | ~5GB | `docker model pull ai/qwen3-coder` | **Default** - Best tool calling support |
+| Qwen3 (14B) | ~9GB | `docker model pull hf.co/bartowski/Qwen3-14B-Instruct-GGUF:Q4_K_M` | Higher quality |
+| Phi4 | ~8GB | `docker model pull ai/phi4` | Good balance |
+
+### For Vision/Multimodal Tasks
+
+| Model | Size | Pull Command | Notes |
+|-------|------|--------------|-------|
+| **Qwen3-VL** | ~8GB | `docker model pull ai/qwen3-vl` | **Default** - Best accuracy for screenshots |
+| Gemma3 | ~4GB | `docker model pull ai/gemma3` | Has vision but may hallucinate |
+
+### For General Tasks (Documentation, Summaries)
+
+| Model | Size | Pull Command | Notes |
+|-------|------|--------------|-------|
+| SmolLM2 | ~2GB | `docker model pull ai/smollm2` | Fastest, smallest |
+| Gemma3 (4B) | ~3GB | `docker model pull ai/gemma3` | Good quality/size ratio |
+| Qwen2.5 (7B) | ~5GB | `docker model pull ai/qwen2.5` | Versatile |
+
+### Tool Calling Performance (Docker's Evaluation)
+
+From [Docker's tool calling evaluation](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/):
+- **Qwen3 (14B)**: 0.971 F1 score - best performer
+- **Qwen3 (8B)**: Outperforms other models at similar size
+- Note: Qwen2.5-Coder has known issues with tool calling via vLLM
+
+---
+
+## Model Management
+
+```bash
+# List downloaded models
+docker model ls
+
+# Remove a model
+docker model rm ai/smollm2
+
+# Get model info
+docker model inspect ai/qwen3-coder
+
+# Pull with specific quantization
+docker model pull hf.co/unsloth/Qwen3-8B-Instruct-GGUF:Q4_K_M
+
+# Ignore memory check for large models
+docker model pull --ignore-runtime-memory-check hf.co/large-model
+```
+
+---
+
+## Configuration
+
+### Context Window
+
+Configure via Docker Desktop or CLI:
+```bash
+# Set context size (tokens) - use --context-size flag
+docker model configure --context-size=500000 ai/qwen3-coder  # 500k for code generation
+docker model configure --context-size=30000 ai/qwen3-vl      # 30k for vision
+```
+
+**Recommended context sizes:**
+- `ai/qwen3-coder`: **500,000 tokens** (large codebases, full project context)
+- `ai/qwen3-vl`: **30,000 tokens** (image + text prompts)
+
+If you get `exceed_context_size_error`, increase the context size with the command above.
+
+### Memory Management
+
+Models load on-demand and unload when idle. For persistent loading:
+```bash
+# Keep model warm with a periodic ping
+while true; do
+  curl -s http://localhost:12434/engines/v1/models > /dev/null
+  sleep 60
+done
+```
+
+---
+
+## Integration with Goose
+
+**When to use Docker Model Runner:**
+- Documentation generation
+- Code summaries
+- Requirements extraction
+- Simple Q&A
+- Anything that doesn't need filesystem/terminal access
+
+**When to use Goose:**
+- File operations (read/write/search)
+- Terminal commands
+- Complex multi-step tasks with tool calling
+- Tasks requiring MCP servers
+
+### Goose Configuration
+
+#### Quick Setup (Recommended)
+
+Run the setup script to automatically configure Goose with the vision extension:
+
+```bash
+./scripts/setup_goose_vision.sh
+```
+
+This script:
+1. Configures Goose to use Docker Model Runner
+2. Adds the vision MCP extension
+3. Creates/verifies `.goosehints` for vision tool awareness
+4. Handles cross-platform config paths (macOS, Linux, Windows)
+
+#### Manual Configuration
+
+Goose config location varies by OS:
+- **macOS/Linux**: `~/.config/goose/config.yaml`
+- **Linux with XDG**: `$XDG_CONFIG_HOME/goose/config.yaml`
+
+Example config:
+```yaml
+GOOSE_PROVIDER: ollama
+OLLAMA_HOST: http://localhost:12434/engines/llama.cpp
+GOOSE_MODEL: ai/qwen3-coder:latest
+extensions:
+  developer:
+    enabled: true
+    name: developer
+    type: builtin
+  memory:
+    enabled: true
+    name: memory
+    type: builtin
+  vision:
+    enabled: true
+    name: vision
+    type: stdio
+    cmd: python3
+    args:
+      - /absolute/path/to/Agentic/scripts/mcp_vision_server.py
+      - --mcp
+```
+
+**Important**: Replace `/absolute/path/to/Agentic` with your actual project path.
+
+Both Goose and direct API calls use the same Docker Model Runner backend and model.
+
+### Vision Model Configuration
+
+The vision model is configured in `.env`:
+```bash
+VISION_MODEL=ai/qwen3-vl
+VISION_API_URL=http://localhost:12434/engines/llama.cpp/v1/chat/completions
+VISION_PREPROCESS=true   # Auto-analyze images in agent prompts
+VISION_TIMEOUT=120       # Seconds before timeout
+```
+
+#### Vision MCP Extension
+
+The `scripts/mcp_vision_server.py` provides:
+- `analyze_image`: Analyze a single image file
+- `analyze_images_in_text`: Find and analyze all images in text
+- `preprocess_prompt`: Augment prompts with image descriptions (compact mode)
+- `extract_image_paths`: Extract image paths without analyzing
+
+**CLI Usage:**
+```bash
+# Analyze an image
+./scripts/mcp_vision_server.py /path/to/screenshot.png
+
+# Preprocess a prompt with image references
+./scripts/mcp_vision_server.py --preprocess "Check the error at /tmp/error.png"
+
+# Run as MCP server for Goose
+./scripts/mcp_vision_server.py --mcp
+```
+
+#### Automatic Vision Preprocessing
+
+When `VISION_PREPROCESS=true`, the agent_runner.py automatically:
+1. Scans prompts for image paths (.png, .jpg, .gif, .webp)
+2. Analyzes each image using the vision model
+3. Appends compact descriptions to the prompt
+
+Example transformation:
+```
+# Input
+"Check the error at /tmp/error.png"
+
+# Output (after preprocessing)
+"Check the error at /tmp/error.png
+
+[IMAGE: /tmp/error.png]: Screenshot showing a dialog box with 'Connection Failed' error message and a red warning icon."
+```
+
+Vision capabilities are used for:
+- Screenshot analysis during QA/testing stages
+- UI verification and error detection
+- Enriching handoff context with image descriptions
+
+---
+
+## Troubleshooting
+
+### Model not responding
+```bash
+# Check if model runner is active
+curl http://localhost:12434/engines/v1/models
+
+# Check Docker Desktop logs
+docker logs $(docker ps -q --filter name=model-runner)
+```
+
+### Out of memory
+- Use smaller quantization (Q4_K_M instead of Q8_0)
+- Close other applications
+- Use `--ignore-runtime-memory-check` flag (risky)
+
+### Slow responses
+- First request loads model into memory (slow)
+- Subsequent requests are faster
+- Consider using smaller models for quick tasks
+
+---
+
+## References
+
+- [Docker Model Runner Docs](https://docs.docker.com/ai/model-runner/)
+- [Docker Model Runner API Reference](https://docs.docker.com/ai/model-runner/api-reference/)
+- [Tool Calling Evaluation](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/)
+- [Qwen Function Calling Guide](https://qwen.readthedocs.io/en/latest/framework/function_call.html)

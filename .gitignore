@@ -1,0 +1,6 @@
+*.deb
+.aider*
+.env
+__pycache__/
+*.pyc
+workspaces/

@@ -1,0 +1,16 @@
+FROM paulgauthier/aider-full
+
+# Ensure DB driver available for project context loading.
+RUN python -m pip install --no-cache-dir psycopg2-binary
+
+# Copy API scripts
+COPY scripts/aider_api.py /app/aider_api.py
+COPY scripts/project_context.py /app/project_context.py
+COPY scripts/discover_project.py /app/discover_project.py
+
+WORKDIR /workspaces
+
+EXPOSE 8001
+
+# Override base image's ENTRYPOINT to run our API
+ENTRYPOINT ["python", "/app/aider_api.py"]

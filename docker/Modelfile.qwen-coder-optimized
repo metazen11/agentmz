@@ -1,0 +1,15 @@
+# Optimized qwen2.5-coder for T500 (4GB VRAM) + 32GB RAM
+# Greedy GPU allocation with RAM spillover
+
+# Start with a high-logic model that fits your 32GB RAM
+FROM qwen2.5-coder:14b
+
+# Force the engine to fill your 4GB VRAM first
+# 99 is a 'greedy' value; Ollama will take all 4GB and spill the rest to RAM.
+PARAMETER num_gpu 99
+
+# Give Aider a large 12k context window (uses ~2.5GB of your 32GB RAM)
+PARAMETER num_ctx 12288
+
+# Stop the model from hallucinating tool calls
+PARAMETER temperature 0
