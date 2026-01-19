@@ -40,6 +40,7 @@ This repository is a Python-based agentic workflow hub. Key paths:
 - Keep dependencies minimal and align with existing patterns in the FastAPI/SQLAlchemy stack.
 - Favor explicit error handling and clear logging in orchestration and API paths.
 - Maintain testability: add or update tests when behavior changes.
+- DRY is mandatory: avoid duplicate logic and consolidate shared behavior.
 
 ## Configuration & Data
 - Configuration lives in `.env` (e.g., `DATABASE_URL`, `AIDER_API_PORT`); avoid committing secrets.

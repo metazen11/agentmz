@@ -2,7 +2,8 @@
 
 export const COOKIE_KEYS = {
   PROJECT_ID: 'agentic_project_id',
-  MODEL: 'agentic_model'
+  MODEL: 'agentic_model',
+  VISION_MODEL: 'agentic_vision_model'
 };
 
 export function setCookie(name, value, days = 365) {

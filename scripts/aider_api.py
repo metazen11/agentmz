@@ -80,6 +80,11 @@ class Config:
         self.ollama_api_base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
         self.aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:1.7b")
         self.agent_model = os.environ.get("AGENT_MODEL", "qwen3:1.7b")
+        self.vision_model = os.environ.get("VISION_MODEL", "")
+        vision_models_raw = os.environ.get("VISION_MODELS", "")
+        self.vision_models = [
+            model.strip() for model in vision_models_raw.split(",") if model.strip()
+        ]
         self.max_iterations = int(os.environ.get("MAX_ITERATIONS", "20"))
         self.default_workspace = os.environ.get("DEFAULT_WORKSPACE", "poc")
         self.git_user_name = os.environ.get("GIT_USER_NAME", "Aider Agent")
@@ -105,6 +110,8 @@ class Config:
             "ollama_api_base": self.ollama_api_base,
             "aider_model": self.aider_model,
             "agent_model": self.agent_model,
+            "vision_model": self.vision_model,
+            "vision_models": self.vision_models,
             "max_iterations": self.max_iterations,
             "default_workspace": self.default_workspace,
             "current_workspace": self.current_workspace,
@@ -631,9 +638,16 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         b64_data = data.get("data", "")
         context = data.get("context", "")
         compact = bool(data.get("compact", True))
+        requested_model = data.get("model")
 
         if not b64_data or not isinstance(b64_data, str):
             return {"success": False, "error": "image data required"}
+
+        if requested_model is not None and not isinstance(requested_model, str):
+            return {"success": False, "error": "vision model must be a string"}
+
+        if requested_model and config.vision_models and requested_model not in config.vision_models:
+            return {"success": False, "error": f"vision model not allowed: {requested_model}"}
 
         try:
             raw = base64.b64decode(b64_data)
@@ -654,7 +668,8 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
                 from mcp_vision_server import analyze_image
             except Exception as exc:
                 return {"success": False, "error": f"vision module unavailable: {exc}"}
-            return analyze_image(tmp_path, context=context, compact=compact)
+            selected_model = requested_model or config.vision_model or None
+            return analyze_image(tmp_path, context=context, compact=compact, model=selected_model)
         finally:
             try:
                 if os.path.exists(tmp_path):

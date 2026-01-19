@@ -7,6 +7,48 @@ let imageDropzoneEl = null;
 let imageInputEl = null;
 let imageListEl = null;
 
+export async function getResizedImageBase64(dataUrl, maxSize = 1024) {
+  if (!dataUrl) return '';
+  const originalBase64 = dataUrl.split(',')[1] || '';
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDimension = Math.max(img.width, img.height);
+      if (!maxDimension || maxDimension <= maxSize) {
+        resolve(originalBase64);
+        return;
+      }
+
+      const scale = maxSize / maxDimension;
+      const targetWidth = Math.max(1, Math.round(img.width * scale));
+      const targetHeight = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(originalBase64);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+      const inputMime = match ? match[1].toLowerCase() : 'image/jpeg';
+      let outputMime = inputMime;
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(outputMime)) {
+        outputMime = 'image/jpeg';
+      }
+      const resizedDataUrl = outputMime === 'image/jpeg'
+        ? canvas.toDataURL(outputMime, 0.85)
+        : canvas.toDataURL(outputMime);
+      const resizedBase64 = resizedDataUrl.split(',')[1] || '';
+      resolve(resizedBase64 || originalBase64);
+    };
+    img.onerror = () => resolve(originalBase64);
+    img.src = dataUrl;
+  });
+}
+
 export function initImageElements() {
   imageDropzoneEl = document.getElementById('image-dropzone');
   imageInputEl = document.getElementById('image-input');
@@ -85,20 +127,24 @@ export function clearImages() {
 export async function describeImages(images) {
   const results = [];
   for (const img of images) {
-    const base64 = (img.dataUrl || '').split(',')[1] || '';
+    const base64 = await getResizedImageBase64(img.dataUrl || '', 1024);
     if (!base64) {
       results.push(`[Image: ${img.name}]\nDescription unavailable (invalid data).`);
       continue;
     }
     try {
+      const payload = {
+        filename: img.name,
+        data: base64,
+        compact: true
+      };
+      if (state.visionModel) {
+        payload.model = state.visionModel;
+      }
       const res = await fetch(`${AIDER_API}/api/vision/describe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: img.name,
-          data: base64,
-          compact: true
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (res.ok && data.success && data.description) {

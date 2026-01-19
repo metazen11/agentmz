@@ -71,6 +71,7 @@ fi
 echo ""
 
 AGENT_MODEL="${AGENT_MODEL:-qwen3:1.7b}"
+VISION_MODEL="${VISION_MODEL:-qwen2.5vl:7b}"
 AIDER_API_PORT="${AIDER_API_PORT:-8001}"
 V2_OLLAMA_PORT="11435"  # v2 Ollama exposed on different port
 
@@ -174,18 +175,33 @@ for i in {1..60}; do
     sleep 1
 done
 
-# Check if required model is available, pull if not
-echo -n "Checking model ($AGENT_MODEL)... "
+# Check if required models are available, pull if not
 AVAILABLE_MODELS=$(curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" 2>/dev/null || echo '{"models":[]}')
 
-if echo "$AVAILABLE_MODELS" | grep -q "\"name\":\"$AGENT_MODEL\""; then
-    echo "OK"
-else
-    echo "NOT FOUND"
-    echo ""
-    echo "Pulling model $AGENT_MODEL into v2 Ollama..."
-    docker exec wfhub-v2-ollama ollama pull "$AGENT_MODEL"
-    echo "Model ready"
+ensure_model() {
+    local model="$1"
+    local label="$2"
+
+    if [ -z "$model" ]; then
+        return 0
+    fi
+
+    echo -n "Checking model ($label: $model)... "
+    if echo "$AVAILABLE_MODELS" | grep -q "\"name\":\"$model\""; then
+        echo "OK"
+    else
+        echo "NOT FOUND"
+        echo ""
+        echo "Pulling model $model into v2 Ollama..."
+        docker exec wfhub-v2-ollama ollama pull "$model"
+        echo "Model ready"
+        AVAILABLE_MODELS=$(curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" 2>/dev/null || echo '{"models":[]}')
+    fi
+}
+
+ensure_model "$AGENT_MODEL" "agent"
+if [ "$VISION_MODEL" != "$AGENT_MODEL" ]; then
+    ensure_model "$VISION_MODEL" "vision"
 fi
 
 # Show v2 Ollama models

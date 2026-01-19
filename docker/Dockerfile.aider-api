@@ -1,5 +1,8 @@
 FROM paulgauthier/aider-full
 
+# Security: update OS packages
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 # Ensure DB driver available for project context loading.
 RUN python -m pip install --no-cache-dir psycopg2-binary
 

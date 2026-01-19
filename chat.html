@@ -48,7 +48,7 @@
     <div class="status-bar">
       <div id="status" class="status">Checking connection...</div>
       <button id="heal-btn" class="secondary" onclick="runFullHealthCheck(true)">Heal</button>
-      <div class="model-selector">
+      <div class="selector model-selector">
         <label for="model-select">Model</label>
         <select id="model-select" disabled>
           <option value="">Loading...</option>
@@ -67,6 +67,12 @@
       <div id="image-dropzone" class="image-dropzone">
         Drag & drop images here, or <button class="btn-small" onclick="openImagePicker()">browse</button>
         <input id="image-input" type="file" accept="image/*" multiple style="display:none;">
+      </div>
+      <div class="selector vision-selector">
+        <label for="vision-model-select">Vision</label>
+        <select id="vision-model-select" disabled>
+          <option value="">Loading...</option>
+        </select>
       </div>
       <div id="image-list" class="image-list"></div>
 
@@ -243,8 +249,9 @@
 import { MAIN_API, AIDER_API, HEALTH_CHECK_INTERVAL_MS, getMainApiBase, initDom } from '/static/js/config.js';
 import { COOKIE_KEYS, setCookie, getCookie, deleteCookie, getWorkspaceName, getDisplayWorkspaceName } from '/static/js/cookies.js';
 import { renderMarkdown } from '/static/js/markdown.js';
+import { getResizedImageBase64 } from '/static/js/images.js';
 import { highlightJson, getToolCallSummary, renderToolCalls } from '/static/js/tools.js';
-import { state, setProjects, setTasks, setSelectedProject, setSelectedTask, setAvailableModels, setIsModelSwitching, setReferencedFiles, setAttachedImages, setEnvEntries, setEditingProjectId, setEditingTaskId, setCurrentLogTab } from '/static/js/state.js';
+import { state, setProjects, setTasks, setSelectedProject, setSelectedTask, setAvailableModels, setIsModelSwitching, setReferencedFiles, setAttachedImages, setEnvEntries, setEditingProjectId, setEditingTaskId, setCurrentLogTab, setVisionModel } from '/static/js/state.js';
 
 // ============================================================================
 // DOM elements (local refs for performance - also available via dom.*)
@@ -255,6 +262,7 @@ const sendBtn = document.getElementById('send');
 const statusEl = document.getElementById('status');
 const modelSelectEl = document.getElementById('model-select');
 const modelApplyBtn = document.getElementById('model-apply');
+const visionModelSelectEl = document.getElementById('vision-model-select');
 const projectListEl = document.getElementById('project-list');
 const taskListEl = document.getElementById('task-list');
 const fileTreeEl = document.getElementById('file-tree');
@@ -317,10 +325,11 @@ async function restoreSelectionsFromCookies() {
     await selectProject(state.projects[0].id);
   }
 
-  // NOTE: Model selection is NOT restored from cookie.
+  // NOTE: Agent model selection is NOT restored from cookie.
   // The dropdown is set by loadModels() based on the actual API config (agent_model).
   // This ensures the UI always reflects what Aider/Ollama are actually configured to use.
   // The cookie is only used to track successful model switches for debugging.
+  // Vision model selection is restored in loadModels() based on config and cookie.
 }
 
 // Initialize
@@ -386,6 +395,10 @@ async function loadModels() {
   modelSelectEl.disabled = true;
   modelApplyBtn.disabled = true;
   modelSelectEl.innerHTML = '<option value="">Loading...</option>';
+  if (visionModelSelectEl) {
+    visionModelSelectEl.disabled = true;
+    visionModelSelectEl.innerHTML = '<option value="">Loading...</option>';
+  }
 
   try {
     const [modelsRes, configRes] = await Promise.all([
@@ -402,13 +415,24 @@ async function loadModels() {
     }
 
     let currentAgentModel = '';
+    let currentVisionModel = '';
+    let visionAllowlist = [];
     if (configRes && configRes.ok) {
       const configData = await configRes.json();
       currentAgentModel = configData.config?.agent_model || '';
+      currentVisionModel = configData.config?.vision_model || '';
+      visionAllowlist = Array.isArray(configData.config?.vision_models)
+        ? configData.config.vision_models
+        : [];
     }
 
     if (!models.length) {
       modelSelectEl.innerHTML = '<option value="">No models found</option>';
+      if (visionModelSelectEl) {
+        visionModelSelectEl.innerHTML = '<option value="">No models found</option>';
+        visionModelSelectEl.disabled = true;
+        setVisionModel('');
+      }
       return;
     }
 
@@ -422,9 +446,41 @@ async function loadModels() {
     if (currentAgentModel && models.includes(currentAgentModel)) {
       modelSelectEl.value = currentAgentModel;
     }
+
+    if (visionModelSelectEl) {
+      const visionModels = visionAllowlist.length
+        ? models.filter(model => visionAllowlist.includes(model))
+        : models.slice();
+
+      if (!visionModels.length) {
+        visionModelSelectEl.innerHTML = '<option value="">No vision models found</option>';
+        visionModelSelectEl.disabled = true;
+        setVisionModel('');
+        return;
+      }
+
+      visionModelSelectEl.innerHTML = visionModels.map(model => (
+        `<option value="${model}">${model}</option>`
+      )).join('');
+      visionModelSelectEl.disabled = false;
+
+      const savedVisionModel = getCookie(COOKIE_KEYS.VISION_MODEL);
+      const selectedVisionModel = (
+        (savedVisionModel && visionModels.includes(savedVisionModel) && savedVisionModel)
+        || (currentVisionModel && visionModels.includes(currentVisionModel) && currentVisionModel)
+        || visionModels[0]
+      );
+      visionModelSelectEl.value = selectedVisionModel;
+      setVisionModel(selectedVisionModel);
+    }
   } catch (err) {
     console.warn('Failed to load models:', err.message);
     modelSelectEl.innerHTML = '<option value="">Model list unavailable</option>';
+    if (visionModelSelectEl) {
+      visionModelSelectEl.innerHTML = '<option value="">Model list unavailable</option>';
+      visionModelSelectEl.disabled = true;
+      setVisionModel('');
+    }
   }
 }
 
@@ -1110,20 +1166,24 @@ function clearImages() {
 async function describeImages(images) {
   const results = [];
   for (const img of images) {
-    const base64 = (img.dataUrl || '').split(',')[1] || '';
+    const base64 = await getResizedImageBase64(img.dataUrl || '', 1024);
     if (!base64) {
       results.push(`[Image: ${img.name}]\nDescription unavailable (invalid data).`);
       continue;
     }
     try {
+      const payload = {
+        filename: img.name,
+        data: base64,
+        compact: true
+      };
+      if (state.visionModel) {
+        payload.model = state.visionModel;
+      }
       const res = await fetch(`${AIDER_API}/api/vision/describe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: img.name,
-          data: base64,
-          compact: true
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (res.ok && data.success && data.description) {
@@ -1878,6 +1938,18 @@ Object.assign(window, {
   applySettings,
   getEditingTaskId
 });
+
+if (visionModelSelectEl) {
+  visionModelSelectEl.addEventListener('change', () => {
+    const selected = visionModelSelectEl.value;
+    setVisionModel(selected);
+    if (selected) {
+      setCookie(COOKIE_KEYS.VISION_MODEL, selected);
+    } else {
+      deleteCookie(COOKIE_KEYS.VISION_MODEL);
+    }
+  });
+}
 
 sendBtn.addEventListener('click', sendMessage);
 promptEl.addEventListener('keypress', e => {

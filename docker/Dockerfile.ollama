@@ -1,6 +1,9 @@
 # Custom Ollama image with optimized model initialization
 FROM ollama/ollama:latest
 
+# Security: update OS packages (if apt available)
+RUN if command -v apt-get > /dev/null; then apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*; fi
+
 # Copy the Modelfile and init script
 COPY docker/Modelfile.qwen-coder-optimized /opt/Modelfile
 COPY docker/ollama-init.sh /opt/ollama-init.sh

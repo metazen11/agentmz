@@ -14,6 +14,7 @@ export const state = {
   // Models
   availableModels: [],
   isModelSwitching: false,
+  visionModel: '',
 
   // Files
   fileTree: [],
@@ -41,6 +42,7 @@ export let selectedProject = state.selectedProject;
 export let selectedTask = state.selectedTask;
 export let availableModels = state.availableModels;
 export let isModelSwitching = state.isModelSwitching;
+export let visionModel = state.visionModel;
 export let referencedFiles = state.referencedFiles;
 export let attachedImages = state.attachedImages;
 export let envEntries = state.envEntries;
@@ -77,6 +79,11 @@ export function setAvailableModels(value) {
 export function setIsModelSwitching(value) {
   state.isModelSwitching = value;
   isModelSwitching = value;
+}
+
+export function setVisionModel(value) {
+  state.visionModel = value;
+  visionModel = value;
 }
 
 export function setReferencedFiles(value) {

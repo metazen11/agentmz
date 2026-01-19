@@ -72,8 +72,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Configuration
 # =============================================================================
 
-VISION_MODEL = os.getenv("VISION_MODEL", "ai/qwen3-vl")
-VISION_API_URL = os.getenv("VISION_API_URL", "http://localhost:12434/engines/llama.cpp/v1/chat/completions")
+OLLAMA_API_BASE = os.getenv("OLLAMA_API_BASE", "http://localhost:11434").rstrip("/")
+VISION_API_URL = os.getenv("VISION_API_URL")
+if not VISION_API_URL:
+    VISION_API_URL = f"{OLLAMA_API_BASE}/api/chat"
+VISION_API_URL = VISION_API_URL.rstrip("/")
+
+def _looks_like_ollama_url(url: str) -> bool:
+    lowered = url.lower()
+    return "/api/chat" in lowered or "/api/generate" in lowered
+
+VISION_MODEL = os.getenv("VISION_MODEL")
+if not VISION_MODEL:
+    VISION_MODEL = "qwen2.5vl:7b" if _looks_like_ollama_url(VISION_API_URL) else "ai/qwen3-vl"
 VISION_TIMEOUT = int(os.getenv("VISION_TIMEOUT", "120"))
 
 # Cache directory
@@ -156,7 +167,8 @@ def analyze_image(
     include_text: bool = True,
     include_errors: bool = True,
     force_refresh: bool = False,
-    compact: bool = False
+    compact: bool = False,
+    model: Optional[str] = None
 ) -> Dict[str, Any]:
     """Analyze an image using the vision model.
 
@@ -167,6 +179,7 @@ def analyze_image(
         include_errors: Whether to identify error messages
         force_refresh: Bypass cache and re-analyze
         compact: If True, return a brief 2-3 sentence summary instead of full analysis
+        model: Optional override for the vision model
 
     Returns:
         Dict with 'success', 'description', and optional 'error'
@@ -221,26 +234,44 @@ def analyze_image(
         max_tokens = 2000
 
     # Build API request
+    selected_model = model or VISION_MODEL
     mime_type = get_image_mime_type(image_path)
-    payload = {
-        "model": VISION_MODEL,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime_type};base64,{image_data}"
+    if _looks_like_ollama_url(VISION_API_URL):
+        payload = {
+            "model": selected_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                    "images": [image_data],
+                }
+            ],
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": max_tokens,
+            },
+        }
+    else:
+        payload = {
+            "model": selected_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{image_data}"
+                            }
                         }
-                    }
-                ]
-            }
-        ],
-        "max_tokens": max_tokens,
-        "temperature": 0.3
-    }
+                    ]
+                }
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.3
+        }
 
     try:
         response = requests.post(
@@ -251,7 +282,15 @@ def analyze_image(
         response.raise_for_status()
 
         data = response.json()
-        description = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if data.get("error"):
+            return {"success": False, "error": f"Vision API error: {data.get('error')}"}
+
+        if "choices" in data:
+            description = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        elif "message" in data:
+            description = data.get("message", {}).get("content", "")
+        else:
+            description = data.get("response", "")
 
         if description:
             cache_description(cache_key, description, image_path)

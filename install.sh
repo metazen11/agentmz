@@ -199,6 +199,10 @@ POSTGRES_DB=agentic
 OLLAMA_URL=http://localhost:11435
 OLLAMA_API_BASE=http://localhost:11435
 
+# Vision (image descriptions via Ollama)
+VISION_MODEL=qwen2.5vl:7b
+VISION_TIMEOUT=120
+
 # Aider Configuration (for code edits)
 AIDER_MODEL=ollama_chat/qwen3:1.7b
 AIDER_API_URL=http://localhost:8001
@@ -337,15 +341,31 @@ echo -e "  Migrations: ${GREEN}complete${NC}"
 if [ "$SKIP_MODELS" = false ]; then
     echo -e "${YELLOW}[11/11] Checking Ollama models...${NC}"
     AGENT_MODEL="${AGENT_MODEL:-qwen3:1.7b}"
+    VISION_MODEL="${VISION_MODEL:-llava:7b}"
 
     AVAILABLE_MODELS=$(curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" 2>/dev/null || echo '{"models":[]}')
 
-    if echo "$AVAILABLE_MODELS" | grep -q "\"name\":\"$AGENT_MODEL\""; then
-        echo -e "  Model $AGENT_MODEL: ${GREEN}available${NC}"
-    else
-        echo "  Pulling model $AGENT_MODEL (this may take a while)..."
-        docker exec wfhub-v2-ollama ollama pull "$AGENT_MODEL"
-        echo -e "  Model $AGENT_MODEL: ${GREEN}pulled${NC}"
+    ensure_model() {
+        local model="$1"
+        local label="$2"
+
+        if [ -z "$model" ]; then
+            return 0
+        fi
+
+        if echo "$AVAILABLE_MODELS" | grep -q "\"name\":\"$model\""; then
+            echo -e "  ${label} model $model: ${GREEN}available${NC}"
+        else
+            echo "  Pulling ${label} model $model (this may take a while)..."
+            docker exec wfhub-v2-ollama ollama pull "$model"
+            echo -e "  ${label} model $model: ${GREEN}pulled${NC}"
+            AVAILABLE_MODELS=$(curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" 2>/dev/null || echo '{"models":[]}')
+        fi
+    }
+
+    ensure_model "$AGENT_MODEL" "agent"
+    if [ "$VISION_MODEL" != "$AGENT_MODEL" ]; then
+        ensure_model "$VISION_MODEL" "vision"
     fi
 else
     echo -e "${YELLOW}[11/11] Skipping model pull (--skip-models)${NC}"

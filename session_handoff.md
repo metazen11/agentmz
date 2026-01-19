@@ -693,6 +693,24 @@ time curl -s http://localhost:11435/api/generate -d '{"model":"qwen-coder-optimi
 
 ---
 
+## Implementation Status (2026-01-19 - Session 14)
+
+### Completed
+- [x] Added vision model selection in the UI with cookie persistence and config allowlist support
+- [x] Updated vision API flow to accept per-request model overrides and default to Ollama `/api/chat`
+- [x] Added client-side image downscaling before vision requests to reduce payload size
+- [x] Exposed vision model config in `/api/config` and `.env.example`
+- [x] Updated install/start scripts to pull a vision model alongside the agent model
+- [x] Hardened Docker images (OS upgrades) and installed git in main-api for `/git/status`
+
+### Notes
+- If using `gemma3:4b` or `qwen2.5vl:7b`, ensure the model is pulled in Ollama and restart `aider-api`.
+- Consider raising `VISION_TIMEOUT` for large vision models if timeouts persist.
+- Rebuild containers after Dockerfile changes: `docker compose --env-file .env -f docker/docker-compose.yml build aider-api main-api`
+- Tests not run in this session.
+
+---
+
 ## Principles (from coding_principles.md)
 
 - **TDD**: Write tests first

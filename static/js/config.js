@@ -20,6 +20,7 @@ export function initDom() {
   dom.statusEl = document.getElementById('status');
   dom.modelSelectEl = document.getElementById('model-select');
   dom.modelApplyBtn = document.getElementById('model-apply');
+  dom.visionModelSelectEl = document.getElementById('vision-model-select');
   dom.projectListEl = document.getElementById('project-list');
   dom.taskListEl = document.getElementById('task-list');
   dom.fileTreeEl = document.getElementById('file-tree');
