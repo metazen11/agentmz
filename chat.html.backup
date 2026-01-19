@@ -5,12 +5,748 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agentic v2 - Coding Agent</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230F172A'/><path d='M25 50L45 70L80 30' stroke='%2338BDF8' stroke-width='12' fill='none' stroke-linecap='round' stroke-linejoin='round'/><circle cx='80' cy='30' r='8' fill='%23FFF'/></svg>">
-<link rel="stylesheet" href="/static/css/base.css">
-<link rel="stylesheet" href="/static/css/components.css">
-<link rel="stylesheet" href="/static/css/sidebar.css">
-<link rel="stylesheet" href="/static/css/chat.css">
-<link rel="stylesheet" href="/static/css/logs.css">
-<link rel="stylesheet" href="/static/css/forms.css">
+<style>
+body {
+  background: #1e1e1e;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  margin: 0;
+  padding: 20px;
+  min-height: 100vh;
+}
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+h1 { margin-bottom: 5px; }
+.subtitle { color: #888; margin-bottom: 20px; font-size: 14px; }
+
+.main-layout {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 20px;
+}
+
+/* Sidebar */
+.sidebar {
+  background: #252525;
+  border-radius: 8px;
+  padding: 15px;
+  height: fit-content;
+}
+.sidebar h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #888;
+  text-transform: uppercase;
+}
+.project-list, .task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px 0;
+}
+.project-list li, .task-list li {
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.project-list li:hover, .task-list li:hover {
+  background: #333;
+}
+.project-list li.selected, .task-list li.selected {
+  background: #3b82f6;
+}
+.project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.project-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-actions {
+  display: flex;
+  gap: 6px;
+}
+.project-actions button {
+  font-size: 11px;
+  padding: 4px 6px;
+  background: #3a3a3a;
+  border-radius: 4px;
+}
+.project-actions button:hover {
+  background: #4a4a4a;
+}
+.project-actions button.delete {
+  background: #5a2a2a;
+}
+.project-actions button.delete:hover {
+  background: #6a2a2a;
+}
+.task-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+}
+.task-status.backlog { background: #444; }
+.task-status.in_progress { background: #2563eb; }
+.task-status.done { background: #16a34a; }
+.task-status.failed { background: #dc2626; }
+.task-stage {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+}
+.task-stage.dev { background: #92400e; color: #fef3c7; }
+.task-stage.qa { background: #4338ca; color: #e0e7ff; }
+.task-stage.review { background: #be185d; color: #fce7f3; }
+.task-stage.complete { background: #166534; color: #dcfce7; }
+.task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-actions {
+  display: flex;
+  gap: 6px;
+}
+.task-actions button {
+  font-size: 11px;
+  padding: 4px 6px;
+  background: #3a3a3a;
+  border-radius: 4px;
+}
+.task-actions button:hover {
+  background: #4a4a4a;
+}
+.task-actions button.delete {
+  background: #5a2a2a;
+}
+.task-actions button.delete:hover {
+  background: #6a2a2a;
+}
+.btn-small {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: #444;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 5px;
+}
+.btn-small:hover { background: #555; }
+
+/* File Tree */
+.file-tree {
+  margin-top: 15px;
+  font-size: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.file-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.file-tree-header h3 {
+  margin: 0;
+}
+.file-tree h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #888;
+  text-transform: uppercase;
+}
+.tree-item {
+  padding: 3px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.tree-item:hover {
+  background: #333;
+  border-radius: 3px;
+}
+.tree-item .icon {
+  width: 16px;
+  text-align: center;
+  color: #888;
+}
+.tree-item.directory .icon { color: #fbbf24; }
+.tree-item.file .icon { color: #60a5fa; }
+.tree-children {
+  margin-left: 16px;
+  border-left: 1px solid #333;
+  padding-left: 8px;
+}
+.tree-toggle {
+  width: 12px;
+  text-align: center;
+  color: #666;
+  cursor: pointer;
+}
+.tree-toggle:hover { color: #fff; }
+.file-references {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+}
+.file-references-title {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.file-references-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.file-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #2a2a2a;
+  color: #d1d5db;
+  font-size: 11px;
+}
+.file-ref-remove {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+.file-ref-remove:hover {
+  color: #f87171;
+}
+.git-modal-grid {
+  display: grid;
+  gap: 10px;
+}
+.git-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.git-row select,
+.git-row input {
+  flex: 1;
+  padding: 8px 10px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+}
+.git-meta {
+  font-size: 12px;
+  color: #aaa;
+}
+.git-remote-list {
+  font-size: 12px;
+  color: #ccc;
+  background: #1f1f1f;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.git-log {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #a1a1aa;
+  background: #121212;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+.settings-modal-grid {
+  display: grid;
+  gap: 10px;
+}
+.settings-list {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px;
+  background: #1f1f1f;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.settings-row label {
+  width: 200px;
+  font-size: 11px;
+  color: #aaa;
+  word-break: break-word;
+}
+.settings-row input {
+  flex: 1;
+  padding: 6px 8px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+}
+.settings-comment {
+  font-size: 11px;
+  color: #666;
+  margin: 6px 0;
+}
+
+.message {
+  margin: 10px 0;
+  padding: 12px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+}
+.message.user {
+  background: #2d2d2d;
+}
+.message.assistant {
+  background: #1a3a1a;
+}
+.message.system {
+  background: #2d2d4d;
+  color: #aaf;
+}
+.message.error {
+  background: #3a1a1a;
+  color: #ff6b6b;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+#messages {
+  height: 450px;
+  overflow-y: auto;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+  background: #252525;
+}
+
+#input-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+#prompt {
+  flex: 1;
+  padding: 12px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  min-height: 90px;
+  resize: vertical;
+}
+.image-dropzone {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px dashed #444;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+.image-dropzone.dragover {
+  border-color: #4CAF50;
+  color: #d1fae5;
+}
+.image-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.image-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #2a2a2a;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #e5e7eb;
+}
+.image-chip button {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+}
+.image-chip button:hover {
+  color: #f87171;
+}
+button {
+  padding: 12px 20px;
+  background: #4CAF50;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+button:hover { background: #45a049; }
+button:disabled { background: #555; cursor: not-allowed; }
+button.secondary { background: #666; }
+button.secondary:hover { background: #777; }
+.modal-actions .delete {
+  background: #5a2a2a;
+}
+.modal-actions .delete:hover {
+  background: #6a2a2a;
+}
+
+.status {
+  font-size: 12px;
+  color: #888;
+  margin-top: 10px;
+}
+.status.connected { color: #4CAF50; }
+.status.error { color: #ff6b6b; }
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#heal-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  margin-top: 10px;
+  display: none;  /* Hidden by default, shown only when degraded */
+}
+#heal-btn.show {
+  display: inline-block;
+}
+.model-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.model-selector label {
+  font-size: 12px;
+  color: #888;
+}
+#model-select {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+}
+#model-select:disabled {
+  color: #777;
+}
+#model-apply {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* Markdown styles */
+.message.assistant {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  white-space: normal;
+}
+.message.assistant code {
+  background: #1a1a1a;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+}
+.message.assistant pre {
+  background: #1a1a1a;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+.message.assistant pre code {
+  background: none;
+  padding: 0;
+  display: block;
+  line-height: 1.5;
+}
+.message.assistant h1, .message.assistant h2, .message.assistant h3 {
+  margin: 12px 0 8px 0;
+  color: #7af;
+}
+.message.assistant h1 { font-size: 18px; }
+.message.assistant h2 { font-size: 16px; }
+.message.assistant h3 { font-size: 14px; }
+.message.assistant ul, .message.assistant ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+.message.assistant li { margin: 4px 0; }
+.message.assistant strong { color: #fff; }
+.message.assistant em { color: #aaa; }
+.message.assistant a { color: #7af; }
+.message.assistant blockquote {
+  border-left: 3px solid #555;
+  margin: 8px 0;
+  padding-left: 12px;
+  color: #aaa;
+}
+
+/* Modal styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: #2d2d2d;
+  padding: 20px;
+  border-radius: 8px;
+  min-width: 300px;
+}
+.modal-content h3 {
+  margin: 0 0 15px 0;
+}
+.modal-content input, .modal-content textarea, .modal-content select {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.modal-content textarea {
+  height: 80px;
+  resize: vertical;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* Logs Panel */
+.logs-panel {
+  margin-top: 20px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.logs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 15px;
+  background: #252525;
+  border-bottom: 1px solid #333;
+  cursor: pointer;
+}
+.logs-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #888;
+}
+.logs-tabs {
+  display: flex;
+  gap: 5px;
+}
+.logs-tabs button {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: #333;
+  border: none;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+}
+.logs-tabs button.active {
+  background: #3b82f6;
+  color: #fff;
+}
+.logs-tabs button:hover:not(.active) {
+  background: #444;
+}
+.logs-content {
+  height: 200px;
+  overflow-y: auto;
+  padding: 10px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  color: #aaa;
+}
+.logs-content.collapsed {
+  display: none;
+}
+.log-pane {
+  min-height: 100%;
+}
+.log-line {
+  margin: 2px 0;
+}
+.log-line.error { color: #ff6b6b; }
+.log-line.warn { color: #fbbf24; }
+.log-line.info { color: #60a5fa; }
+.connection-status {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 10px;
+}
+.connection-status.connected { background: #166534; color: #86efac; }
+.connection-status.disconnected { background: #7f1d1d; color: #fca5a5; }
+.connection-status.connecting { background: #854d0e; color: #fde047; }
+
+/* Expandable Tool Calls */
+.tool-calls {
+  margin-top: 15px;
+  border-top: 1px solid #333;
+  padding-top: 10px;
+}
+.tool-calls-header {
+  color: #888;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.tool-call {
+  margin: 6px 0;
+  border: 1px solid #333;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: #2a2a2a;
+  cursor: pointer;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+}
+.tool-call-header:hover {
+  background: #333;
+}
+.tool-call-toggle {
+  margin-right: 8px;
+  color: #888;
+  transition: transform 0.2s;
+}
+.tool-call.expanded .tool-call-toggle {
+  transform: rotate(90deg);
+}
+.tool-call-name {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+.tool-call-summary {
+  color: #888;
+  margin-left: 8px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-call-status {
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.tool-call-status.success { background: #166534; color: #86efac; }
+.tool-call-status.error { background: #7f1d1d; color: #fca5a5; }
+.tool-call-body {
+  display: none;
+  padding: 12px;
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+}
+.tool-call.expanded .tool-call-body {
+  display: block;
+}
+.tool-call-section {
+  margin-bottom: 12px;
+}
+.tool-call-section:last-child {
+  margin-bottom: 0;
+}
+.tool-call-section-title {
+  color: #888;
+  font-size: 10px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.tool-json {
+  background: #0d0d0d;
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tool-json .key { color: #7dd3fc; }
+.tool-json .string { color: #86efac; }
+.tool-json .number { color: #fde047; }
+.tool-json .boolean { color: #c4b5fd; }
+.tool-json .null { color: #888; }
+</style>
 </head>
 <body>
 <div class="container">
@@ -163,7 +899,7 @@
     </select>
     <div class="modal-actions">
       <button onclick="updateTask()">Save</button>
-      <button class="delete" onclick="deleteTask(getEditingTaskId())">Delete</button>
+      <button class="delete" onclick="deleteTask(editingTaskId)">Delete</button>
       <button class="secondary" onclick="hideModals()">Cancel</button>
     </div>
   </div>
@@ -236,19 +972,8 @@
   </div>
 </div>
 
-<script type="module">
-// ============================================================================
-// Imports from extracted modules
-// ============================================================================
-import { MAIN_API, AIDER_API, HEALTH_CHECK_INTERVAL_MS, getMainApiBase, initDom } from '/static/js/config.js';
-import { COOKIE_KEYS, setCookie, getCookie, deleteCookie, getWorkspaceName, getDisplayWorkspaceName } from '/static/js/cookies.js';
-import { renderMarkdown } from '/static/js/markdown.js';
-import { highlightJson, getToolCallSummary, renderToolCalls } from '/static/js/tools.js';
-import { state, setProjects, setTasks, setSelectedProject, setSelectedTask, setAvailableModels, setIsModelSwitching, setReferencedFiles, setAttachedImages, setEnvEntries, setEditingProjectId, setEditingTaskId, setCurrentLogTab } from '/static/js/state.js';
-
-// ============================================================================
-// DOM elements (local refs for performance - also available via dom.*)
-// ============================================================================
+<script>
+// DOM elements
 const messagesEl = document.getElementById('messages');
 const promptEl = document.getElementById('prompt');
 const sendBtn = document.getElementById('send');
@@ -279,21 +1004,48 @@ const restartAiderEl = document.getElementById('restart-aider');
 const restartOllamaEl = document.getElementById('restart-ollama');
 const restartDbEl = document.getElementById('restart-db');
 
+// API endpoints - use HTTPS proxy when served via *.localhost (Caddy)
+const IS_LOCAL_DOMAIN = window.location.hostname.endsWith('.localhost');
+const MAIN_API = IS_LOCAL_DOMAIN ? window.location.origin : 'http://localhost:8002';
+const AIDER_API = IS_LOCAL_DOMAIN ? `${window.location.origin}/aider` : 'http://localhost:8001';
+const HEALTH_CHECK_INTERVAL_MS = 30000;
+
+function getMainApiBase() {
+  return MAIN_API;
+}
+
+// State
+let projects = [];
+let tasks = [];
+let selectedProject = null;
+let selectedTask = null;
+let availableModels = [];
+let isModelSwitching = false;
+let referencedFiles = [];
+let attachedImages = [];
+let envEntries = [];
+
 // ============================================================================
-// Local state aliases (getter shortcuts to state module)
+// Cookie Persistence
 // ============================================================================
-const getProjects = () => state.projects;
-const getTasks = () => state.tasks;
-const getSelectedProject = () => state.selectedProject;
-const getSelectedTask = () => state.selectedTask;
-const getAvailableModels = () => state.availableModels;
-const getIsModelSwitching = () => state.isModelSwitching;
-const getReferencedFiles = () => state.referencedFiles;
-const getAttachedImages = () => state.attachedImages;
-const getEnvEntries = () => state.envEntries;
-const getEditingProjectId = () => state.editingProjectId;
-const getEditingTaskId = () => state.editingTaskId;
-const getCurrentLogTab = () => state.currentLogTab;
+const COOKIE_KEYS = {
+  PROJECT_ID: 'agentic_project_id',
+  MODEL: 'agentic_model'
+};
+
+function setCookie(name, value, days = 365) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+function deleteCookie(name) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+}
 
 async function restoreSelectionsFromCookies() {
   // Restore project selection
@@ -302,7 +1054,7 @@ async function restoreSelectionsFromCookies() {
 
   if (savedProjectId) {
     const projectId = parseInt(savedProjectId, 10);
-    const projectExists = state.projects.some(p => p.id === projectId);
+    const projectExists = projects.some(p => p.id === projectId);
     if (projectExists) {
       await selectProject(projectId);
       projectRestored = true;
@@ -313,8 +1065,8 @@ async function restoreSelectionsFromCookies() {
   }
 
   // Fall back to first project if no valid cookie
-  if (!projectRestored && state.projects.length > 0) {
-    await selectProject(state.projects[0].id);
+  if (!projectRestored && projects.length > 0) {
+    await selectProject(projects[0].id);
   }
 
   // NOTE: Model selection is NOT restored from cookie.
@@ -323,10 +1075,31 @@ async function restoreSelectionsFromCookies() {
   // The cookie is only used to track successful model switches for debugging.
 }
 
+// Extract workspace name from path (handles trailing slashes, bare names, etc.)
+function getWorkspaceName(path) {
+  if (!path) return 'poc';
+  // Handle [%root%] - pass through to API (it will resolve)
+  if (path.startsWith('[%root%]')) {
+    return path;
+  }
+  // Remove trailing slashes and get last segment
+  const cleaned = path.replace(/\/+$/, '');
+  const parts = cleaned.split('/').filter(p => p && p !== '.');
+  return parts.pop() || 'poc';
+}
+
+// Get display name for workspace (friendly name for UI)
+function getDisplayWorkspaceName(path) {
+  if (!path) return 'poc';
+  if (path.startsWith('[%root%]')) {
+    return path === '[%root%]' ? 'v2 (self)' : path.replace('[%root%]/', 'v2/');
+  }
+  return getWorkspaceName(path);
+}
+
 // Initialize
 async function init() {
   console.log('init() called');
-  initDom();
   await runFullHealthCheck(true);
   await checkHealth();
   await loadModels();
@@ -335,7 +1108,7 @@ async function init() {
   // Restore project and model selections from cookies (or fall back to first project)
   await restoreSelectionsFromCookies();
   // Start log streaming for default tab only
-  switchLogTab(state.currentLogTab);
+  switchLogTab(currentLogTab);
   console.log('init() complete');
   setInterval(() => runFullHealthCheck(false), HEALTH_CHECK_INTERVAL_MS);
 }
@@ -354,7 +1127,7 @@ async function checkHealth() {
     if (mainOk && aiderOk) {
       const aiderData = await aiderRes.json();
       const modelLabel = aiderData.agent_model || aiderData.aider_model || 'ready';
-      statusEl.textContent = state.isModelSwitching
+      statusEl.textContent = isModelSwitching
         ? `Switching model...`
         : `Connected - Model: ${modelLabel}`;
       statusEl.className = 'status connected';
@@ -412,7 +1185,7 @@ async function loadModels() {
       return;
     }
 
-    setAvailableModels(models);
+    availableModels = models;
     modelSelectEl.innerHTML = models.map(model => (
       `<option value="${model}">${model}</option>`
     )).join('');
@@ -434,7 +1207,7 @@ async function applyModelSelection() {
     return;
   }
 
-  setIsModelSwitching(true);
+  isModelSwitching = true;
   modelApplyBtn.disabled = true;
   modelSelectEl.disabled = true;
   sendBtn.disabled = true;
@@ -465,11 +1238,11 @@ async function applyModelSelection() {
     setCookie(COOKIE_KEYS.MODEL, loadedModel);
 
     // Reset switching flag BEFORE checkHealth so status shows correctly
-    setIsModelSwitching(false);
+    isModelSwitching = false;
     await checkHealth();
   } catch (err) {
     addMessage('error', `Failed to set model: ${err.message}`);
-    setIsModelSwitching(false);
+    isModelSwitching = false;
     await checkHealth();
   } finally {
     // Ensure UI is re-enabled even if something went wrong
@@ -529,9 +1302,8 @@ async function loadProjects() {
   try {
     const res = await fetch(`${MAIN_API}/projects`);
     console.log('loadProjects response status:', res.status);
-    const projectList = await res.json();
-    setProjects(projectList);
-    console.log('loadProjects got projects:', projectList);
+    projects = await res.json();
+    console.log('loadProjects got projects:', projects);
     renderProjects();
     // Note: Auto-selection now handled by restoreSelectionsFromCookies() in init()
   } catch (err) {
@@ -541,12 +1313,12 @@ async function loadProjects() {
 }
 
 function renderProjects() {
-  if (state.projects.length === 0) {
+  if (projects.length === 0) {
     projectListEl.innerHTML = '<li style="color: #666;">No projects yet</li>';
     return;
   }
-  projectListEl.innerHTML = state.projects.map(p => `
-    <li class="${state.selectedProject?.id === p.id ? 'selected' : ''}"
+  projectListEl.innerHTML = projects.map(p => `
+    <li class="${selectedProject?.id === p.id ? 'selected' : ''}"
         onclick="selectProject(${p.id})">
       <div class="project-row">
         <span class="project-title">${p.name}</span>
@@ -561,19 +1333,15 @@ function renderProjects() {
 
 async function selectProject(projectId) {
   console.log('selectProject called with:', projectId);
-  const project = state.projects.find(p => p.id === projectId);
-  if (!project) {
-    return;
-  }
-  setSelectedProject(project);
-  setSelectedTask(null);
+  selectedProject = projects.find(p => p.id === projectId);
+  selectedTask = null;
   renderProjects();
 
   // Persist selection to cookie
   setCookie(COOKIE_KEYS.PROJECT_ID, projectId);
 
   // Switch aider workspace (non-blocking)
-  const workspaceName = getWorkspaceName(project.workspace_path);
+  const workspaceName = getWorkspaceName(selectedProject.workspace_path);
   fetch(`${AIDER_API}/api/config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -602,8 +1370,7 @@ async function selectProject(projectId) {
 async function loadTasks(projectId) {
   try {
     const res = await fetch(`${MAIN_API}/projects/${projectId}/tasks`);
-    const taskList = await res.json();
-    setTasks(taskList);
+    tasks = await res.json();
     renderTasks();
   } catch (err) {
     taskListEl.innerHTML = '<li style="color: #ff6b6b;">Failed to load</li>';
@@ -611,16 +1378,16 @@ async function loadTasks(projectId) {
 }
 
 function renderTasks() {
-  if (state.tasks.length === 0) {
+  if (tasks.length === 0) {
     taskListEl.innerHTML = '<li style="color: #666;">No tasks yet</li>';
     return;
   }
-  taskListEl.innerHTML = state.tasks.map(t => {
+  taskListEl.innerHTML = tasks.map(t => {
     const title = t.title || 'Untitled task';
     const stage = t.stage || 'dev';
     const status = t.status || 'backlog';
     return `
-    <li class="${state.selectedTask?.id === t.id ? 'selected' : ''}"
+    <li class="${selectedTask?.id === t.id ? 'selected' : ''}"
         onclick="openTaskEditor(${t.id})">
       <div class="task-row">
         <span class="task-title" title="${title}">${title}</span>
@@ -633,11 +1400,10 @@ function renderTasks() {
 }
 
 function selectTask(taskId) {
-  const task = findTaskById(taskId);
-  setSelectedTask(task);
+  selectedTask = findTaskById(taskId);
   renderTasks();
-  if (task) {
-    addMessage('system', `Selected task: ${task.title}`);
+  if (selectedTask) {
+    addMessage('system', `Selected task: ${selectedTask.title}`);
   }
 }
 
@@ -646,7 +1412,7 @@ function openTaskEditor(taskId) {
   showEditTaskModal(taskId);
 }
 
-function findTaskById(taskId, list = state.tasks) {
+function findTaskById(taskId, list = tasks) {
   for (const task of list) {
     if (task.id === taskId) {
       return task;
@@ -663,6 +1429,9 @@ function findTaskById(taskId, list = state.tasks) {
 
 // File tree functions
 const fileTreeContent = document.getElementById('file-tree-content');
+let fileTree = [];
+
+let currentWorkspacePath = '';
 
 async function loadFileTree(projectId) {
   console.log('loadFileTree called with projectId:', projectId);
@@ -677,9 +1446,9 @@ async function loadFileTree(projectId) {
     }
     const data = await res.json();
     console.log('File tree data:', data);
-    state.currentWorkspacePath = data.workspace || 'unknown';
-    state.fileTree = data.files || [];
-    console.log('Workspace:', state.currentWorkspacePath, 'Files count:', state.fileTree.length);
+    currentWorkspacePath = data.workspace || 'unknown';
+    fileTree = data.files || [];
+    console.log('Workspace:', currentWorkspacePath, 'Files count:', fileTree.length);
     renderFileTree();
   } catch (err) {
     console.error('loadFileTree error:', err);
@@ -689,17 +1458,17 @@ async function loadFileTree(projectId) {
 
 function renderFileTree() {
   // Show workspace path header (use friendly name for [%root%])
-  const displayPath = state.currentWorkspacePath.startsWith('[%root%]')
-    ? state.currentWorkspacePath.replace('[%root%]', 'v2 (self)')
-    : `/workspaces/${state.currentWorkspacePath}`;
+  const displayPath = currentWorkspacePath.startsWith('[%root%]')
+    ? currentWorkspacePath.replace('[%root%]', 'v2 (self)')
+    : `/workspaces/${currentWorkspacePath}`;
   let html = `<div style="color: #888; font-size: 11px; margin-bottom: 8px;">📂 ${displayPath}</div>`;
 
-  if (state.fileTree.length === 0) {
+  if (fileTree.length === 0) {
     fileTreeContent.innerHTML = html + '<span style="color: #666;">No files found</span>';
     return;
   }
 
-  fileTreeContent.innerHTML = html + renderTreeNode(state.fileTree);
+  fileTreeContent.innerHTML = html + renderTreeNode(fileTree);
 }
 
 function renderTreeNode(nodes, level = 0) {
@@ -746,15 +1515,15 @@ function addFileReference(path) {
   if (!path) {
     return;
   }
-  if (state.referencedFiles.includes(path)) {
+  if (referencedFiles.includes(path)) {
     return;
   }
-  setReferencedFiles([...state.referencedFiles, path]);
+  referencedFiles.push(path);
   renderFileReferences();
 }
 
 function removeFileReference(path) {
-  setReferencedFiles(state.referencedFiles.filter(item => item !== path));
+  referencedFiles = referencedFiles.filter(item => item !== path);
   renderFileReferences();
 }
 
@@ -767,7 +1536,7 @@ function renderFileReferences() {
     fileTreeEl.appendChild(refsEl);
   }
 
-  if (state.referencedFiles.length === 0) {
+  if (referencedFiles.length === 0) {
     refsEl.innerHTML = '';
     return;
   }
@@ -775,7 +1544,7 @@ function renderFileReferences() {
   refsEl.innerHTML = `
     <div class="file-references-title">File References</div>
     <div class="file-references-list">
-      ${state.referencedFiles.map(path => `
+      ${referencedFiles.map(path => `
         <span class="file-ref-chip" title="${path}">
           ${path}
           <button class="file-ref-remove" onclick="removeFileReference('${path}')">×</button>
@@ -784,7 +1553,7 @@ function renderFileReferences() {
     </div>
   `;
 
-  const tokens = state.referencedFiles.map(path => `@${path}`).join(' ');
+  const tokens = referencedFiles.map(path => `@${path}`).join(' ');
   const text = promptEl.value.trim();
   const cleaned = text.replace(/(^|\s)@[^\\s]+/g, '').trim();
   promptEl.value = cleaned ? `${cleaned} ${tokens}` : tokens;
@@ -800,9 +1569,9 @@ async function logAiderWorkspaceAccess() {
     if (root && current) {
       let displayRoot = root;
       let displayCurrent = current;
-      if (state.selectedProject?.workspace_path?.startsWith('[%root%]')) {
+      if (selectedProject?.workspace_path?.startsWith('[%root%]')) {
         displayRoot = '/mnt/c/dropbox/_coding/agentic/v2';
-        const subPath = state.selectedProject.workspace_path.replace('[%root%]', '').replace(/^\//, '');
+        const subPath = selectedProject.workspace_path.replace('[%root%]', '').replace(/^\//, '');
         displayCurrent = subPath ? subPath : '[%root%]';
       }
       addMessage('system', `Aider workspace root: ${displayRoot} (current: ${displayCurrent})`);
@@ -877,7 +1646,7 @@ async function loadGitBranches(projectId) {
 }
 
 async function checkoutBranch() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
@@ -886,7 +1655,7 @@ async function checkoutBranch() {
     return;
   }
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.selectedProject.id}/git/checkout`, {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch })
@@ -898,14 +1667,14 @@ async function checkoutBranch() {
     const data = await res.json();
     addMessage('system', `Checked out branch: ${data.current || branch}`);
     appendGitLog(data);
-    await loadGitBranches(state.selectedProject.id);
+    await loadGitBranches(selectedProject.id);
   } catch (err) {
     alert('Failed to checkout branch: ' + err.message);
   }
 }
 
 async function createBranch() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
@@ -914,7 +1683,7 @@ async function createBranch() {
     return;
   }
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.selectedProject.id}/git/checkout`, {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch, create: true })
@@ -927,20 +1696,20 @@ async function createBranch() {
     gitBranchInputEl.value = '';
     addMessage('system', `Created branch: ${data.current || branch}`);
     appendGitLog(data);
-    await loadGitBranches(state.selectedProject.id);
+    await loadGitBranches(selectedProject.id);
   } catch (err) {
     alert('Failed to create branch: ' + err.message);
   }
 }
 
 async function pullBranch() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
   const remote = gitRemoteSelectEl.value;
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.selectedProject.id}/git/pull`, {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/pull`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remote })
@@ -958,13 +1727,13 @@ async function pullBranch() {
 }
 
 async function pushBranch() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
   const remote = gitRemoteSelectEl.value;
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.selectedProject.id}/git/push`, {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remote })
@@ -982,7 +1751,7 @@ async function pushBranch() {
 }
 
 async function addRemote() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
@@ -993,7 +1762,7 @@ async function addRemote() {
     return;
   }
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.selectedProject.id}/git/remote`, {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/remote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, url })
@@ -1007,19 +1776,19 @@ async function addRemote() {
     gitRemoteUrlEl.value = '';
     addMessage('system', `Added remote: ${name}`);
     appendGitLog(data);
-    await loadGitBranches(state.selectedProject.id);
+    await loadGitBranches(selectedProject.id);
   } catch (err) {
     alert('Failed to add remote: ' + err.message);
   }
 }
 
 function showGitModal() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
   document.getElementById('git-modal').style.display = 'flex';
-  loadGitBranches(state.selectedProject.id);
+  loadGitBranches(selectedProject.id);
 }
 
 function hideGitModal() {
@@ -1070,13 +1839,10 @@ function handleImageFiles(files) {
   images.forEach(file => {
     const reader = new FileReader();
     reader.onload = () => {
-      setAttachedImages([
-        ...state.attachedImages,
-        {
-          name: file.name,
-          dataUrl: reader.result
-        }
-      ]);
+      attachedImages.push({
+        name: file.name,
+        dataUrl: reader.result
+      });
       renderImageList();
     };
     reader.readAsDataURL(file);
@@ -1085,11 +1851,11 @@ function handleImageFiles(files) {
 
 function renderImageList() {
   if (!imageListEl) return;
-  if (state.attachedImages.length === 0) {
+  if (attachedImages.length === 0) {
     imageListEl.innerHTML = '';
     return;
   }
-  imageListEl.innerHTML = state.attachedImages.map((img, idx) => `
+  imageListEl.innerHTML = attachedImages.map((img, idx) => `
     <span class="image-chip">
       ${img.name}
       <button onclick="removeImage(${idx})">×</button>
@@ -1098,12 +1864,12 @@ function renderImageList() {
 }
 
 function removeImage(index) {
-  setAttachedImages(state.attachedImages.filter((_, idx) => idx !== index));
+  attachedImages.splice(index, 1);
   renderImageList();
 }
 
 function clearImages() {
-  setAttachedImages([]);
+  attachedImages = [];
   renderImageList();
 }
 
@@ -1139,12 +1905,12 @@ async function describeImages(images) {
 }
 
 async function initGitRepo() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.selectedProject.id}/git/init`, {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/init`, {
       method: 'POST'
     });
     if (!res.ok) {
@@ -1154,14 +1920,14 @@ async function initGitRepo() {
     const data = await res.json();
     addMessage('system', 'Initialized git repo');
     appendGitLog(data);
-    await loadGitBranches(state.selectedProject.id);
+    await loadGitBranches(selectedProject.id);
   } catch (err) {
     alert('Failed to init repo: ' + err.message);
   }
 }
 
 async function saveGitUser() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
@@ -1172,7 +1938,7 @@ async function saveGitUser() {
     return;
   }
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.selectedProject.id}/git/config`, {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email })
@@ -1184,7 +1950,7 @@ async function saveGitUser() {
     const data = await res.json();
     addMessage('system', `Git user set: ${name} <${email}>`);
     appendGitLog(data);
-    await loadGitBranches(state.selectedProject.id);
+    await loadGitBranches(selectedProject.id);
   } catch (err) {
     alert('Failed to save git user: ' + err.message);
   }
@@ -1215,7 +1981,7 @@ async function loadSettings() {
       throw new Error(`HTTP ${res.status}`);
     }
     const data = await res.json();
-    setEnvEntries(data.entries || []);
+    envEntries = data.entries || [];
     renderSettings();
   } catch (err) {
     settingsListEl.textContent = `Failed to load settings: ${err.message}`;
@@ -1224,7 +1990,7 @@ async function loadSettings() {
 
 function renderSettings() {
   const filter = (settingsFilterEl.value || '').toLowerCase();
-  const rows = state.envEntries.map((entry, idx) => {
+  const rows = envEntries.map((entry, idx) => {
     if (entry.type === 'pair') {
       if (filter && !entry.key.toLowerCase().includes(filter)) {
         return '';
@@ -1249,7 +2015,7 @@ async function applySettings() {
   const updates = {};
   settingsListEl.querySelectorAll('input[data-env-index]').forEach(input => {
     const index = Number(input.dataset.envIndex);
-    const entry = state.envEntries[index];
+    const entry = envEntries[index];
     if (entry && entry.type === 'pair') {
       updates[entry.key] = input.value;
     }
@@ -1284,10 +2050,10 @@ if (settingsFilterEl) {
 }
 
 function openFileInVSCode(path) {
-  if (!state.selectedProject || !path) {
+  if (!selectedProject || !path) {
     return;
   }
-  let workspacePath = state.selectedProject.workspace_path || '';
+  let workspacePath = selectedProject.workspace_path || '';
   let fullPath;
 
   // Handle [%root%] - project root directory
@@ -1330,7 +2096,7 @@ function showNewProjectModal() {
 }
 
 function showNewTaskModal() {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
@@ -1344,9 +2110,11 @@ function hideModals() {
   document.getElementById('edit-task-modal').style.display = 'none';
   document.getElementById('git-modal').style.display = 'none';
   document.getElementById('settings-modal').style.display = 'none';
-  setEditingProjectId(null);
-  setEditingTaskId(null);
+  editingProjectId = null;
+  editingTaskId = null;
 }
+
+let editingProjectId = null;
 
 async function createProject() {
   const name = document.getElementById('new-project-name').value.trim();
@@ -1377,7 +2145,7 @@ async function createProject() {
     const project = await res.json();
     console.log('Created project:', project);
 
-    setProjects([...state.projects, project]);
+    projects.push(project);
     renderProjects();
     hideModals();
     document.getElementById('new-project-name').value = '';
@@ -1389,12 +2157,12 @@ async function createProject() {
 }
 
 function showEditProjectModal(projectId) {
-  const project = state.projects.find(p => p.id === projectId);
+  const project = projects.find(p => p.id === projectId);
   if (!project) {
     alert('Project not found');
     return;
   }
-  setEditingProjectId(projectId);
+  editingProjectId = projectId;
   document.getElementById('edit-project-name').value = project.name || '';
   document.getElementById('edit-project-workspace').value = getWorkspaceName(project.workspace_path);
   document.getElementById('edit-project-environment').value = project.environment || 'local';
@@ -1402,7 +2170,7 @@ function showEditProjectModal(projectId) {
 }
 
 async function updateProject() {
-  if (!state.editingProjectId) {
+  if (!editingProjectId) {
     alert('Select a project first');
     return;
   }
@@ -1411,7 +2179,7 @@ async function updateProject() {
   const environment = document.getElementById('edit-project-environment').value.trim();
 
   try {
-    const res = await fetch(`${MAIN_API}/projects/${state.editingProjectId}`, {
+    const res = await fetch(`${MAIN_API}/projects/${editingProjectId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, workspace_path: workspace, environment })
@@ -1421,9 +2189,9 @@ async function updateProject() {
       throw new Error(`HTTP ${res.status}: ${errorText}`);
     }
     const updated = await res.json();
-    setProjects(state.projects.map(p => p.id === updated.id ? updated : p));
-    if (state.selectedProject?.id === updated.id) {
-      setSelectedProject(updated);
+    projects = projects.map(p => p.id === updated.id ? updated : p);
+    if (selectedProject?.id === updated.id) {
+      selectedProject = updated;
       await selectProject(updated.id);
     } else {
       renderProjects();
@@ -1445,11 +2213,11 @@ async function deleteProject(projectId) {
       throw new Error(`HTTP ${res.status}: ${errorText}`);
     }
     await res.json();
-    setProjects(state.projects.filter(p => p.id !== projectId));
-    if (state.selectedProject?.id === projectId) {
-      setSelectedProject(null);
-      setSelectedTask(null);
-      setTasks([]);
+    projects = projects.filter(p => p.id !== projectId);
+    if (selectedProject?.id === projectId) {
+      selectedProject = null;
+      selectedTask = null;
+      tasks = [];
       taskListEl.innerHTML = '<li style="color: #666;">Select a project</li>';
       document.getElementById('file-tree-content').innerHTML = '<span style="color: #666;">Select a project</span>';
       // Clear the project cookie since deleted project was selected
@@ -1470,10 +2238,10 @@ async function createTask() {
     const res = await fetch(`${MAIN_API}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: state.selectedProject.id, title, description })
+      body: JSON.stringify({ project_id: selectedProject.id, title, description })
     });
     await res.json();
-    await loadTasks(state.selectedProject.id);
+    await loadTasks(selectedProject.id);
     hideModals();
     document.getElementById('new-task-title').value = '';
     document.getElementById('new-task-desc').value = '';
@@ -1482,13 +2250,15 @@ async function createTask() {
   }
 }
 
+let editingTaskId = null;
+
 function showEditTaskModal(taskId) {
   const task = findTaskById(taskId);
   if (!task) {
     alert('Task not found');
     return;
   }
-  setEditingTaskId(taskId);
+  editingTaskId = taskId;
   document.getElementById('edit-task-title').value = task.title || '';
   document.getElementById('edit-task-desc').value = task.description || '';
   document.getElementById('edit-task-status').value = task.status || 'backlog';
@@ -1497,7 +2267,7 @@ function showEditTaskModal(taskId) {
 }
 
 async function updateTask() {
-  if (!state.editingTaskId || !state.selectedProject) {
+  if (!editingTaskId || !selectedProject) {
     alert('Select a task first');
     return;
   }
@@ -1507,7 +2277,7 @@ async function updateTask() {
   const stage = document.getElementById('edit-task-stage').value;
 
   try {
-    const res = await fetch(`${MAIN_API}/tasks/${state.editingTaskId}`, {
+    const res = await fetch(`${MAIN_API}/tasks/${editingTaskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, description, status, stage })
@@ -1517,7 +2287,7 @@ async function updateTask() {
       throw new Error(`HTTP ${res.status}: ${errorText}`);
     }
     await res.json();
-    await loadTasks(state.selectedProject.id);
+    await loadTasks(selectedProject.id);
     hideModals();
   } catch (err) {
     alert('Failed to update task: ' + err.message);
@@ -1525,7 +2295,7 @@ async function updateTask() {
 }
 
 async function deleteTask(taskId) {
-  if (!state.selectedProject) {
+  if (!selectedProject) {
     alert('Select a project first');
     return;
   }
@@ -1539,10 +2309,10 @@ async function deleteTask(taskId) {
       throw new Error(`HTTP ${res.status}: ${errorText}`);
     }
     await res.json();
-    if (state.selectedTask?.id === taskId) {
-      setSelectedTask(null);
+    if (selectedTask?.id === taskId) {
+      selectedTask = null;
     }
-    await loadTasks(state.selectedProject.id);
+    await loadTasks(selectedProject.id);
     hideModals();
   } catch (err) {
     alert('Failed to delete task: ' + err.message);
@@ -1551,7 +2321,7 @@ async function deleteTask(taskId) {
 
 // Chat functions
 async function sendMessage() {
-  if (state.isModelSwitching) {
+  if (isModelSwitching) {
     addMessage('system', 'Model is switching. Please wait...');
     return;
   }
@@ -1563,19 +2333,19 @@ async function sendMessage() {
   sendBtn.disabled = true;
   statusEl.textContent = 'Agent is working...';
 
-  const workspace = state.selectedProject
-    ? getWorkspaceName(state.selectedProject.workspace_path)
+  const workspace = selectedProject
+    ? getWorkspaceName(selectedProject.workspace_path)
     : 'poc';
 
   try {
     // Build prompt with task context if selected
     let fullPrompt = text;
-    if (state.selectedTask) {
-      fullPrompt = `Task: ${state.selectedTask.title}\n${state.selectedTask.description || ''}\n\nRequest: ${text}`;
+    if (selectedTask) {
+      fullPrompt = `Task: ${selectedTask.title}\n${selectedTask.description || ''}\n\nRequest: ${text}`;
     }
 
-    if (state.attachedImages.length > 0) {
-      const imageDescriptions = await describeImages(state.attachedImages);
+    if (attachedImages.length > 0) {
+      const imageDescriptions = await describeImages(attachedImages);
       if (imageDescriptions.length > 0) {
         fullPrompt = `${fullPrompt}\n\n${imageDescriptions.join('\n\n')}`;
       }
@@ -1587,8 +2357,8 @@ async function sendMessage() {
       body: JSON.stringify({
         task: fullPrompt,
         workspace,
-        project_id: state.selectedProject?.id,
-        task_id: state.selectedTask?.id
+        project_id: selectedProject?.id,
+        task_id: selectedTask?.id
       })
     });
 
@@ -1601,7 +2371,7 @@ async function sendMessage() {
       statusEl.textContent = 'Ready';
       statusEl.className = 'status connected';
       // Refresh file tree after agent completes
-      if (state.selectedProject) loadFileTree(state.selectedProject.id);
+      if (selectedProject) loadFileTree(selectedProject.id);
     } else {
       addMessage('error', `Error: ${data.error || data.summary || 'Unknown error'}`);
       statusEl.textContent = 'Error - see output';
@@ -1630,16 +2400,20 @@ const logPanes = {
   main: document.getElementById('log-pane-main')
 };
 const logsConnectionEl = document.getElementById('logs-connection');
+let currentLogTab = 'ollama_http';
+let logsCollapsed = false;
+const logSockets = {};
 const reconnectTimers = {};
 const reconnectAttempts = {};
 const MAX_RECONNECT_ATTEMPTS = 5;
+const logSocketConnected = {};
 const logPollingTimers = {};
 const logLoadedOnce = {};
 const LOG_POLL_INTERVAL_MS = 30000;
 
 function toggleLogs() {
-  state.logsCollapsed = !state.logsCollapsed;
-  logsContentEl.classList.toggle('collapsed', state.logsCollapsed);
+  logsCollapsed = !logsCollapsed;
+  logsContentEl.classList.toggle('collapsed', logsCollapsed);
 }
 
 function switchLogTab(tab) {
@@ -1653,7 +2427,7 @@ function switchLogTab(tab) {
     logPanes[key].style.display = key === tab ? 'block' : 'none';
   });
 
-  setCurrentLogTab(tab);
+  currentLogTab = tab;
   updateLogConnectionStatus(tab);
 
   if (!logLoadedOnce[tab]) {
@@ -1661,13 +2435,13 @@ function switchLogTab(tab) {
     loadRecentLogs(tab, true);
   }
 
-  if (!state.logSockets[tab] || state.logSockets[tab].readyState > 1) {
+  if (!logSockets[tab] || logSockets[tab].readyState > 1) {
     connectLogStream(tab);
   }
 }
 
 function connectLogStream(container) {
-  if (state.logSockets[container] && state.logSockets[container].readyState <= 1) {
+  if (logSockets[container] && logSockets[container].readyState <= 1) {
     return;
   }
   const baseUrl = new URL(getMainApiBase());
@@ -1675,26 +2449,26 @@ function connectLogStream(container) {
   const wsUrl = `${wsProtocol}//${baseUrl.host}/ws/logs/${container}`;
   console.log('Connecting to WebSocket:', wsUrl);
 
-  state.logSocketConnected[container] = false;
+  logSocketConnected[container] = false;
   updateLogConnectionStatus(container, 'connecting');
 
   try {
-    state.logSockets[container] = new WebSocket(wsUrl);
+    logSockets[container] = new WebSocket(wsUrl);
 
-    state.logSockets[container].onopen = () => {
+    logSockets[container].onopen = () => {
       console.log('WebSocket connected:', container);
       reconnectAttempts[container] = 0;
-      state.logSocketConnected[container] = true;
+      logSocketConnected[container] = true;
       updateLogConnectionStatus(container, 'connected');
     };
 
-    state.logSockets[container].onmessage = (event) => {
+    logSockets[container].onmessage = (event) => {
       appendLogLine(event.data, '', container);
     };
 
-    state.logSockets[container].onclose = (event) => {
+    logSockets[container].onclose = (event) => {
       console.log('WebSocket closed:', container, event.code, event.reason);
-      state.logSocketConnected[container] = false;
+      logSocketConnected[container] = false;
       updateLogConnectionStatus(container, 'disconnected');
       startLogPolling(container);
 
@@ -1711,17 +2485,17 @@ function connectLogStream(container) {
       }
     };
 
-    state.logSockets[container].onerror = (error) => {
+    logSockets[container].onerror = (error) => {
       console.error('WebSocket error:', error);
       appendLogLine('WebSocket connection error - check if main-api can access Docker socket', 'error', container);
-      state.logSocketConnected[container] = false;
+      logSocketConnected[container] = false;
       updateLogConnectionStatus(container, 'disconnected');
       startLogPolling(container);
     };
   } catch (err) {
     console.error('Failed to create WebSocket:', err);
     appendLogLine(`Failed to connect: ${err.message}`, 'error', container);
-    state.logSocketConnected[container] = false;
+    logSocketConnected[container] = false;
     updateLogConnectionStatus(container, 'disconnected');
     startLogPolling(container);
   }
@@ -1752,7 +2526,7 @@ async function loadRecentLogs(container, replace = false) {
 }
 
 function startLogPolling(container) {
-  if (state.logSocketConnected[container]) {
+  if (logSocketConnected[container]) {
     return;
   }
   if (logPollingTimers[container]) {
@@ -1773,7 +2547,7 @@ function stopLogPolling(container) {
   }
 }
 
-function appendLogLine(text, type = '', container = state.currentLogTab) {
+function appendLogLine(text, type = '', container = currentLogTab) {
   const line = document.createElement('div');
   line.className = 'log-line';
 
@@ -1806,10 +2580,10 @@ function appendLogLine(text, type = '', container = state.currentLogTab) {
 }
 
 function updateLogConnectionStatus(container, forcedState = null) {
-  if (container !== state.currentLogTab) {
+  if (container !== currentLogTab) {
     return;
   }
-  const isConnected = forcedState === 'connected' || state.logSocketConnected[container];
+  const isConnected = forcedState === 'connected' || logSocketConnected[container];
   const isConnecting = forcedState === 'connecting';
   if (isConnecting) {
     logsConnectionEl.textContent = `${container} connecting...`;
@@ -1821,6 +2595,175 @@ function updateLogConnectionStatus(container, forcedState = null) {
     logsConnectionEl.textContent = 'disconnected';
     logsConnectionEl.className = 'connection-status disconnected';
   }
+}
+
+// Simple markdown renderer
+function renderMarkdown(text) {
+  // Escape HTML first
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Code blocks (```code```)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="lang-$1">$2</code></pre>');
+
+  // Inline code (`code`)
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Bold and italic
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+  // Blockquotes
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // Unordered lists
+  html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+
+  // Line breaks (preserve double newlines as paragraphs)
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+
+  return '<p>' + html + '</p>';
+}
+
+// JSON syntax highlighter
+function highlightJson(obj, indent = 0) {
+  const spaces = '  '.repeat(indent);
+
+  if (obj === null) {
+    return `<span class="null">null</span>`;
+  }
+  if (typeof obj === 'boolean') {
+    return `<span class="boolean">${obj}</span>`;
+  }
+  if (typeof obj === 'number') {
+    return `<span class="number">${obj}</span>`;
+  }
+  if (typeof obj === 'string') {
+    // Escape HTML and handle long strings
+    const escaped = obj
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    return `<span class="string">"${escaped}"</span>`;
+  }
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '[]';
+    const items = obj.map(item => spaces + '  ' + highlightJson(item, indent + 1));
+    return '[\n' + items.join(',\n') + '\n' + spaces + ']';
+  }
+  if (typeof obj === 'object') {
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return '{}';
+    const items = keys.map(key => {
+      const keyHtml = `<span class="key">"${key}"</span>`;
+      const valueHtml = highlightJson(obj[key], indent + 1);
+      return spaces + '  ' + keyHtml + ': ' + valueHtml;
+    });
+    return '{\n' + items.join(',\n') + '\n' + spaces + '}';
+  }
+  return String(obj);
+}
+
+// Get a summary for a tool call (collapsed view)
+function getToolCallSummary(tc) {
+  const args = tc.args || {};
+  if (tc.tool === 'write') {
+    const bytes = args.content ? args.content.length : 0;
+    return `path="${args.path || '?'}", ${bytes} bytes`;
+  }
+  if (tc.tool === 'read') {
+    return `path="${args.path || '?'}"`;
+  }
+  if (tc.tool === 'glob') {
+    return `pattern="${args.pattern || '?'}"`;
+  }
+  if (tc.tool === 'grep') {
+    return `pattern="${args.pattern || '?'}"`;
+  }
+  if (tc.tool === 'bash') {
+    const cmd = args.command || '';
+    return cmd.length > 40 ? cmd.slice(0, 40) + '...' : cmd;
+  }
+  if (tc.tool === 'edit') {
+    const prompt = args.prompt || '';
+    return prompt.length > 40 ? prompt.slice(0, 40) + '...' : prompt;
+  }
+  if (tc.tool === 'done') {
+    return `status="${args.status || '?'}"`;
+  }
+  // Fallback: show first arg
+  const firstKey = Object.keys(args)[0];
+  if (firstKey) {
+    const val = String(args[firstKey]);
+    return `${firstKey}="${val.length > 30 ? val.slice(0, 30) + '...' : val}"`;
+  }
+  return '';
+}
+
+// Render tool calls as expandable HTML
+function renderToolCalls(toolCalls) {
+  if (!toolCalls || toolCalls.length === 0) return '';
+
+  let html = '<div class="tool-calls">';
+  html += '<div class="tool-calls-header">Actions taken</div>';
+
+  toolCalls.forEach((tc, idx) => {
+    const summary = getToolCallSummary(tc);
+    const output = tc.output || '';
+    const isSuccess = !output.includes('"success": false') && !output.includes("'success': False");
+
+    html += `<div class="tool-call" id="tool-call-${idx}">`;
+    html += `<div class="tool-call-header" onclick="document.getElementById('tool-call-${idx}').classList.toggle('expanded')">`;
+    html += `<span class="tool-call-toggle">▶</span>`;
+    html += `<span class="tool-call-name">${tc.tool}</span>`;
+    html += `<span class="tool-call-summary">${summary}</span>`;
+    html += `<span class="tool-call-status ${isSuccess ? 'success' : 'error'}">${isSuccess ? 'OK' : 'ERR'}</span>`;
+    html += '</div>';
+
+    html += '<div class="tool-call-body">';
+
+    // Arguments section
+    html += '<div class="tool-call-section">';
+    html += '<div class="tool-call-section-title">Arguments</div>';
+    html += `<div class="tool-json">${highlightJson(tc.args || {})}</div>`;
+    html += '</div>';
+
+    // Output section (if available)
+    if (output) {
+      html += '<div class="tool-call-section">';
+      html += '<div class="tool-call-section-title">Output</div>';
+      // Try to parse output as JSON for highlighting
+      let outputHtml;
+      try {
+        const outputObj = typeof output === 'string' ? JSON.parse(output.replace(/'/g, '"')) : output;
+        outputHtml = highlightJson(outputObj);
+      } catch {
+        // Plain text fallback
+        outputHtml = output.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+      html += `<div class="tool-json">${outputHtml}</div>`;
+      html += '</div>';
+    }
+
+    html += '</div>'; // tool-call-body
+    html += '</div>'; // tool-call
+  });
+
+  html += '</div>';
+  return html;
 }
 
 function addMessage(type, content, toolCalls = null) {
@@ -1840,44 +2783,6 @@ function addMessage(type, content, toolCalls = null) {
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
-
-Object.assign(window, {
-  showNewProjectModal,
-  showNewTaskModal,
-  showGitModal,
-  showSettingsModal,
-  hideModals,
-  hideGitModal,
-  hideSettingsModal,
-  createProject,
-  updateProject,
-  deleteProject,
-  createTask,
-  updateTask,
-  deleteTask,
-  selectProject,
-  showEditProjectModal,
-  openTaskEditor,
-  openImagePicker,
-  removeImage,
-  handleFileClick,
-  toggleTreeNode,
-  removeFileReference,
-  openFileInVSCode,
-  runFullHealthCheck,
-  applyModelSelection,
-  toggleLogs,
-  switchLogTab,
-  initGitRepo,
-  saveGitUser,
-  checkoutBranch,
-  createBranch,
-  pullBranch,
-  pushBranch,
-  addRemote,
-  applySettings,
-  getEditingTaskId
-});
 
 sendBtn.addEventListener('click', sendMessage);
 promptEl.addEventListener('keypress', e => {

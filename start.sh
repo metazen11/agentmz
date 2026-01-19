@@ -260,12 +260,7 @@ if [ "$NO_BROWSER" = false ]; then
     }
 
     echo "Opening browser..."
-    # Try agentmz.local first, fall back to localhost
-    if ping -c 1 agentmz.local > /dev/null 2>&1; then
-        open_browser "http://agentmz.local:8002"
-    else
-        open_browser "http://localhost:8002"
-    fi
+    open_browser "https://wfhub.localhost" || open_browser "http://localhost:8002"
 fi
 
 echo "Ready!"

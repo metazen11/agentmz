@@ -5,7 +5,7 @@
 # Usage:
 #   ./install.sh                    # Full installation
 #   ./install.sh --skip-models      # Skip Ollama model pulling
-#   ./install.sh --skip-hosts       # Skip /etc/hosts modification
+#   ./install.sh --skip-https       # Skip local HTTPS trust step
 #   ./install.sh --no-browser       # Don't open browser at end
 #   ./install.sh --help             # Show help
 
@@ -23,7 +23,7 @@ NC='\033[0m' # No Color
 
 # Default options
 SKIP_MODELS=false
-SKIP_HOSTS=false
+SKIP_HTTPS=false
 NO_BROWSER=false
 
 # === Parse CLI Arguments ===
@@ -33,8 +33,8 @@ while [[ $# -gt 0 ]]; do
             SKIP_MODELS=true
             shift
             ;;
-        --skip-hosts)
-            SKIP_HOSTS=true
+        --skip-https)
+            SKIP_HTTPS=true
             shift
             ;;
         --no-browser)
@@ -48,12 +48,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --skip-models    Skip Ollama model pulling"
-            echo "  --skip-hosts     Skip /etc/hosts modification (agentmz.local)"
+            echo "  --skip-https     Skip local HTTPS trust step"
             echo "  --no-browser     Don't open browser at end"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "After installation:"
-            echo "  - Access UI at http://agentmz.local:8002 (or http://localhost:8002)"
+            echo "  - Access UI at https://wfhub.localhost"
             echo "  - Start services: ./start.sh"
             echo "  - Run tests: pytest tests/ -v"
             exit 0
@@ -71,7 +71,7 @@ echo -e "${BLUE}=== Workflow Hub v2 Installer ===${NC}"
 echo ""
 
 # === Step 1: Check Prerequisites ===
-echo -e "${YELLOW}[1/10] Checking prerequisites...${NC}"
+echo -e "${YELLOW}[1/11] Checking prerequisites...${NC}"
 
 # Check Python version
 if ! command -v python3 &> /dev/null; then
@@ -105,7 +105,7 @@ fi
 echo -e "  Docker Compose: ${GREEN}available${NC}"
 
 # === Step 2: Start Docker if needed ===
-echo -e "${YELLOW}[2/10] Ensuring Docker is running...${NC}"
+echo -e "${YELLOW}[2/11] Ensuring Docker is running...${NC}"
 
 start_docker_desktop() {
     case "$(uname -s)" in
@@ -157,7 +157,7 @@ else
 fi
 
 # === Step 3: Create Virtual Environment ===
-echo -e "${YELLOW}[3/10] Setting up Python virtual environment...${NC}"
+echo -e "${YELLOW}[3/11] Setting up Python virtual environment...${NC}"
 
 if [ ! -d "venv" ]; then
     echo "  Creating venv..."
@@ -170,18 +170,18 @@ source venv/bin/activate
 echo -e "  Activated: ${GREEN}venv${NC}"
 
 # === Step 4: Install Python Dependencies ===
-echo -e "${YELLOW}[4/10] Installing Python dependencies...${NC}"
+echo -e "${YELLOW}[4/11] Installing Python dependencies...${NC}"
 pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt
 echo -e "  Dependencies: ${GREEN}installed${NC}"
 
 # === Step 5: Install Playwright Browsers ===
-echo -e "${YELLOW}[5/10] Installing Playwright browsers...${NC}"
+echo -e "${YELLOW}[5/11] Installing Playwright browsers...${NC}"
 python3 -m playwright install chromium --quiet 2>/dev/null || python3 -m playwright install chromium
 echo -e "  Playwright: ${GREEN}chromium installed${NC}"
 
 # === Step 6: Create .env if missing ===
-echo -e "${YELLOW}[6/10] Checking configuration...${NC}"
+echo -e "${YELLOW}[6/11] Checking configuration...${NC}"
 
 if [ ! -f ".env" ]; then
     echo "  Creating .env with defaults..."
@@ -231,12 +231,36 @@ fi
 source .env
 
 # === Step 7: Start Docker Services ===
-echo -e "${YELLOW}[7/10] Starting Docker services...${NC}"
+echo -e "${YELLOW}[7/11] Starting Docker services...${NC}"
 docker compose --env-file .env -f docker/docker-compose.yml up -d
 echo -e "  Services: ${GREEN}started${NC}"
 
-# === Step 8: Wait for Services ===
-echo -e "${YELLOW}[8/10] Waiting for services to be healthy...${NC}"
+# === Step 8: Configure HTTPS ===
+echo -e "${YELLOW}[8/11] Configuring local HTTPS...${NC}"
+if [ "$SKIP_HTTPS" = false ]; then
+    echo -n "  Caddy... "
+    for i in $(seq 1 30); do
+        if docker ps --format '{{.Names}}' | grep -q "^wfhub-v2-caddy$"; then
+            echo -e "${GREEN}running${NC}"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo -e "${YELLOW}not running${NC}"
+        fi
+        sleep 1
+    done
+    echo "  Trusting Caddy local CA (may prompt for sudo)..."
+    if ./scripts/trust_caddy_ca.sh; then
+        echo -e "  HTTPS: ${GREEN}trusted${NC}"
+    else
+        echo -e "  HTTPS: ${YELLOW}manual trust required${NC}"
+    fi
+else
+    echo -e "  HTTPS: ${YELLOW}skipped (--skip-https)${NC}"
+fi
+
+# === Step 9: Wait for Services ===
+echo -e "${YELLOW}[9/11] Waiting for services to be healthy...${NC}"
 
 # Wait for PostgreSQL
 echo -n "  PostgreSQL... "
@@ -301,17 +325,17 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# === Step 9: Run Database Migrations ===
-echo -e "${YELLOW}[9/10] Running database migrations...${NC}"
+# === Step 10: Run Database Migrations ===
+echo -e "${YELLOW}[10/11] Running database migrations...${NC}"
 alembic upgrade head 2>/dev/null || {
     echo "  Migrations may already be applied, checking..."
     alembic current 2>/dev/null || echo "  No pending migrations"
 }
 echo -e "  Migrations: ${GREEN}complete${NC}"
 
-# === Step 10: Pull Ollama Models ===
+# === Step 11: Pull Ollama Models ===
 if [ "$SKIP_MODELS" = false ]; then
-    echo -e "${YELLOW}[10/10] Checking Ollama models...${NC}"
+    echo -e "${YELLOW}[11/11] Checking Ollama models...${NC}"
     AGENT_MODEL="${AGENT_MODEL:-qwen3:1.7b}"
 
     AVAILABLE_MODELS=$(curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" 2>/dev/null || echo '{"models":[]}')
@@ -324,23 +348,7 @@ if [ "$SKIP_MODELS" = false ]; then
         echo -e "  Model $AGENT_MODEL: ${GREEN}pulled${NC}"
     fi
 else
-    echo -e "${YELLOW}[10/10] Skipping model pull (--skip-models)${NC}"
-fi
-
-# === Domain Configuration ===
-if [ "$SKIP_HOSTS" = false ]; then
-    echo ""
-    echo -e "${YELLOW}Configuring domain...${NC}"
-
-    HOSTS_ENTRY="127.0.0.1 agentmz.local"
-
-    if grep -q "agentmz.local" /etc/hosts 2>/dev/null; then
-        echo -e "  /etc/hosts: ${GREEN}already configured${NC}"
-    else
-        echo "  Adding agentmz.local to /etc/hosts (requires sudo)..."
-        echo "$HOSTS_ENTRY" | sudo tee -a /etc/hosts > /dev/null
-        echo -e "  /etc/hosts: ${GREEN}updated${NC}"
-    fi
+    echo -e "${YELLOW}[11/11] Skipping model pull (--skip-models)${NC}"
 fi
 
 # === Success ===
@@ -352,8 +360,8 @@ docker compose --env-file .env -f docker/docker-compose.yml ps --format "table {
 
 echo ""
 echo "Access the UI at:"
-echo -e "  ${BLUE}http://agentmz.local:8002${NC}"
-echo -e "  ${BLUE}http://localhost:8002${NC}"
+echo -e "  ${BLUE}https://wfhub.localhost${NC}"
+echo -e "  ${BLUE}http://localhost:8002${NC} (fallback)"
 echo ""
 echo "Useful commands:"
 echo "  ./start.sh              # Start services (after reboot)"
@@ -394,12 +402,7 @@ if [ "$NO_BROWSER" = false ]; then
         return 1
     }
 
-    # Try agentmz.local first, fall back to localhost
-    if [ "$SKIP_HOSTS" = false ] && ping -c 1 agentmz.local > /dev/null 2>&1; then
-        open_browser "http://agentmz.local:8002"
-    else
-        open_browser "http://localhost:8002"
-    fi
+    open_browser "https://wfhub.localhost" || open_browser "http://localhost:8002"
 fi
 
 echo -e "${GREEN}Done!${NC}"

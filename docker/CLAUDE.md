@@ -13,4 +13,11 @@
 | #447 | 10:50 PM | 🔵 | Aider API Dockerfile Extends Official Aider Image | ~514 |
 | #439 | 10:44 PM | 🔵 | Comprehensive Docker Container and Workspace Management Architecture Documented | ~927 |
 | #434 | 10:42 PM | 🔵 | Docker Compose Configuration for Workflow Hub v2 Services | ~646 |
+
+### Jan 18, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1024 | 6:57 PM | 🔵 | Static file serving architecture in main-api | ~471 |
+| #1008 | 6:28 PM | 🔵 | Docker Compose configuration uses container hostnames for inter-service communication | ~342 |
 </claude-mem-context>

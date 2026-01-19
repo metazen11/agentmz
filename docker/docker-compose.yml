@@ -69,6 +69,7 @@ services:
     env_file:
       - ../.env
     environment:
+      - DATABASE_URL=postgresql://wfhub:${POSTGRES_PASSWORD}@wfhub-v2-db:5432/agentic
       - POSTGRES_HOST=wfhub-v2-db
       - POSTGRES_PORT=5432
       - AIDER_API_URL=http://wfhub-v2-aider-api:8001
@@ -98,7 +99,7 @@ services:
       - OLLAMA_API_BASE=http://wfhub-v2-main-api:8002/ollama
       - PORT=${AIDER_API_PORT}
       - WORKSPACES_DIR=/v2/workspaces
-      - DATABASE_URL=postgresql://wfhub:wfhub@wfhub-v2-db:5432/agentic
+      - DATABASE_URL=postgresql://wfhub:${POSTGRES_PASSWORD}@wfhub-v2-db:5432/agentic
       - PROJECT_ROOT=/v2  # For [%root%] path variable
       - PYTHONUNBUFFERED=1
     ports:
@@ -113,8 +114,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # HTTPS reverse proxy (local certs via Caddy internal CA)
+  caddy:
+    image: caddy:2
+    container_name: wfhub-v2-caddy
+    hostname: wfhub-v2-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - wfhub_v2_caddy_data:/data
+      - wfhub_v2_caddy_config:/config
+    depends_on:
+      - main-api
+      - aider-api
+    restart: unless-stopped
+
 volumes:
   wfhub_v2_pgdata:
   # Use root's Ollama data volume (already has models)
   wfhub_ollama_data:
     external: true
+  wfhub_v2_caddy_data:
+  wfhub_v2_caddy_config:

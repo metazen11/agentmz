@@ -1,0 +1,28 @@
+{
+  local_certs
+}
+
+wfhub.localhost {
+  encode zstd gzip
+
+  handle_path /aider/* {
+    reverse_proxy wfhub-v2-aider-api:8001
+  }
+
+  reverse_proxy wfhub-v2-main-api:8002
+}
+
+aider.localhost {
+  encode zstd gzip
+  reverse_proxy wfhub-v2-aider-api:8001
+}
+
+ollama.localhost {
+  encode zstd gzip
+  reverse_proxy wfhub-v2-ollama:11434
+}
+
+api.localhost {
+  encode zstd gzip
+  reverse_proxy wfhub-v2-main-api:8002
+}

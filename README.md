@@ -71,17 +71,17 @@ The installer will:
 4. Install Playwright browsers
 5. Create .env with defaults (if missing)
 6. Start Docker services
-7. Wait for all services to be healthy
-8. Run database migrations
-9. Pull Ollama models (qwen3:1.7b)
-10. Configure agentmz.local domain
+7. Configure local HTTPS (trust Caddy CA)
+8. Wait for all services to be healthy
+9. Run database migrations
+10. Pull Ollama models (qwen3:1.7b)
 11. Open browser to the UI
 
 ### Installation Options
 
 ```bash
 ./install.sh --skip-models   # Skip Ollama model pulling
-./install.sh --skip-hosts    # Skip /etc/hosts modification
+./install.sh --skip-https    # Skip local HTTPS trust step
 ./install.sh --no-browser    # Don't open browser at end
 ./install.sh --help          # Show all options
 ```
@@ -356,11 +356,8 @@ v2/workspaces/poc/
 
 ## Domain Configuration
 
-The installer adds `agentmz.local` to `/etc/hosts`:
-```
-127.0.0.1 agentmz.local
-```
+Local HTTPS is served via Caddy on `*.localhost` (no hosts file edits needed).
 
 Access the UI at:
-- http://agentmz.local:8002
-- http://localhost:8002
+- https://wfhub.localhost
+- http://localhost:8002 (fallback)

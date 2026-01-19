@@ -1,0 +1,47 @@
+{
+  "updated": "2026-01-18",
+  "items": [
+    {
+      "id": "secrets-01",
+      "title": "Remove tracked local config files and add templates",
+      "status": "done",
+      "notes": "Untracked .env_bak.txt, .mcp.json, .claude/settings.local.json; added .env.example and .mcp.example.json."
+    },
+    {
+      "id": "secrets-02",
+      "title": "Rotate any credentials exposed in local files",
+      "status": "done",
+      "notes": "Rotated Postgres password in .env/.env_bak.txt/.mcp.json and updated the DB user password."
+    },
+    {
+      "id": "https-01",
+      "title": "Define HTTPS/local domain plan",
+      "status": "done",
+      "notes": "Plan: use *.localhost domains + Caddy reverse proxy with mkcert or Caddy internal CA; avoid hosts-file edits; document trust step."
+    },
+    {
+      "id": "https-02",
+      "title": "Implement HTTPS reverse proxy",
+      "status": "done",
+      "notes": "Added Caddy service + Caddyfile for *.localhost routing and local certs."
+    },
+    {
+      "id": "https-03",
+      "title": "Update app config and docs for HTTPS",
+      "status": "done",
+      "notes": "Updated chat.html, start.sh/install.sh, and README for HTTPS usage."
+    },
+    {
+      "id": "tests-01",
+      "title": "Fix Playwright strict locator failure",
+      "status": "done",
+      "notes": "Updated Playwright UI test to new selectors and HTTPS target; added git-status stubbing."
+    },
+    {
+      "id": "tests-02",
+      "title": "Re-run full test suite",
+      "status": "todo",
+      "notes": "pytest tests/ -v after updates."
+    }
+  ]
+}

@@ -2,7 +2,11 @@
   "mcpServers": {
     "postgres": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://wfhub:wfhub@localhost:5433/agentic"]
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://wfhub:change-me@localhost:5433/agentic"
+      ]
     },
     "docker": {
       "command": "npx",

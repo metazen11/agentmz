@@ -669,6 +669,30 @@ time curl -s http://localhost:11435/api/generate -d '{"model":"qwen-coder-optimi
 
 ---
 
+## Implementation Status (2026-01-18 - Session 13)
+
+### Completed
+- [x] Removed tracked local config files from git index (`.env_bak.txt`, `.mcp.json`, `.claude/settings.local.json`)
+- [x] Added ignore rules for `.mcp.json` and `.claude/settings.local.json`
+- [x] Added redacted templates: `.env.example`, `.mcp.example.json`
+- [x] Rotated local Postgres password in `.env`, `.env_bak.txt`, and `.mcp.json`
+- [x] Added Caddy HTTPS reverse proxy + local cert trust script
+- [x] Updated install/start scripts and chat UI for `https://wfhub.localhost`
+- [x] Updated README for HTTPS setup (no hosts-file edits)
+- [x] Completed chat.html migration to state.js (stateful setters + window exposure for inline handlers)
+- [x] Updated Playwright browser test to use running HTTPS app and new UI structure
+
+### Notes
+- Rotate any credentials referenced by removed files (even if local-only).
+- Next up: plan HTTPS + local domains for all services (avoid hosts-file friction).
+- Updated DB user password to match rotated POSTGRES_PASSWORD.
+- HTTPS plan drafted: use `*.localhost` domains with a Caddy reverse proxy and mkcert or Caddy internal CA to avoid hosts-file edits.
+- Caddy uses internal CA; trust via `scripts/trust_caddy_ca.sh` (invoked by `install.sh` unless `--skip-https`).
+- Fixed container DB connection by overriding `DATABASE_URL` for main-api/aider-api to use `wfhub-v2-db:5432`.
+- Playwright run: `pytest tests/test_browser_hello_world.py -v` (8 passed) using `https://wfhub.localhost`.
+
+---
+
 ## Principles (from coding_principles.md)
 
 - **TDD**: Write tests first
