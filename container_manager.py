@@ -41,13 +41,13 @@ class ContainerManager:
 
         Args:
             workspace_path: Path to workspace directory to mount
-            model: LLM model name (default from env or qwen2.5-coder:3b)
+            model: LLM model name (default from env or qwen3:1.7b)
         """
         self.client = docker.from_env()
         self.workspace_path = workspace_path or os.path.join(
             os.path.dirname(__file__), "workspaces", "poc"
         )
-        self.model = model or os.environ.get("AGENT_MODEL", "qwen2.5-coder:3b")
+        self.model = model or os.environ.get("AGENT_MODEL", "qwen3:1.7b")
 
         # Get the v2 directory for building aider-api
         self.v2_dir = Path(__file__).parent.resolve()
@@ -313,7 +313,7 @@ def main():
     parser.add_argument("--workspace", "-w", default=None,
                         help="Path to workspace (default: v2/workspaces/poc)")
     parser.add_argument("--model", "-m", default=None,
-                        help="LLM model (default: qwen2.5-coder:3b)")
+                        help="LLM model (default: qwen3:1.7b)")
 
     args = parser.parse_args()
 

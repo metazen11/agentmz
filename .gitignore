@@ -1,6 +1,7 @@
 *.deb
 .aider*
 .env
+.env_bak*
 __pycache__/
 *.pyc
 workspaces/

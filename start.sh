@@ -6,6 +6,7 @@
 #   ./start.sh                          # Start with default workspace (poc)
 #   ./start.sh --workspace beatbridge   # Start with specific workspace
 #   ./start.sh -w poc                   # Short form
+#   ./start.sh --no-browser             # Don't open browser at end
 
 set -e
 
@@ -14,17 +15,23 @@ cd "$SCRIPT_DIR"
 
 # === Parse CLI Arguments ===
 WORKSPACE=""
+NO_BROWSER=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --workspace|-w)
             WORKSPACE="$2"
             shift 2
             ;;
+        --no-browser)
+            NO_BROWSER=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: ./start.sh [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  -w, --workspace NAME   Set the default workspace (e.g., poc, beatbridge_app)"
+            echo "  --no-browser           Don't open browser at end"
             echo "  -h, --help             Show this help message"
             echo ""
             echo "Workspaces are located in: $SCRIPT_DIR/workspaces/"
@@ -63,7 +70,7 @@ else
 fi
 echo ""
 
-AGENT_MODEL="${AGENT_MODEL:-qwen2.5-coder:3b}"
+AGENT_MODEL="${AGENT_MODEL:-qwen3:1.7b}"
 AIDER_API_PORT="${AIDER_API_PORT:-8001}"
 V2_OLLAMA_PORT="11435"  # v2 Ollama exposed on different port
 
@@ -220,3 +227,45 @@ echo ""
 echo "  # Run POC game tests"
 echo "  pytest tests/test_poc_game.py -v -s"
 echo ""
+
+# === Open Browser ===
+if [ "$NO_BROWSER" = false ]; then
+    open_browser() {
+        local url="$1"
+        case "$(uname -s)" in
+            Darwin)
+                open "$url"
+                return 0
+                ;;
+            Linux)
+                if grep -qi microsoft /proc/version 2>/dev/null; then
+                    # WSL - use Windows browser
+                    if command -v cmd.exe &> /dev/null; then
+                        cmd.exe /c start "$url" 2>/dev/null &
+                        return 0
+                    elif command -v powershell.exe &> /dev/null; then
+                        powershell.exe -c "Start-Process '$url'" 2>/dev/null &
+                        return 0
+                    fi
+                else
+                    # Native Linux
+                    if command -v xdg-open &> /dev/null; then
+                        xdg-open "$url" 2>/dev/null &
+                        return 0
+                    fi
+                fi
+                ;;
+        esac
+        return 1
+    }
+
+    echo "Opening browser..."
+    # Try agentmz.local first, fall back to localhost
+    if ping -c 1 agentmz.local > /dev/null 2>&1; then
+        open_browser "http://agentmz.local:8002"
+    else
+        open_browser "http://localhost:8002"
+    fi
+fi
+
+echo "Ready!"

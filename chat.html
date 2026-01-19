@@ -159,6 +159,15 @@ h1 { margin-bottom: 5px; }
   max-height: 300px;
   overflow-y: auto;
 }
+.file-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.file-tree-header h3 {
+  margin: 0;
+}
 .file-tree h3 {
   margin: 0 0 8px 0;
   font-size: 14px;
@@ -232,6 +241,89 @@ h1 { margin-bottom: 5px; }
 .file-ref-remove:hover {
   color: #f87171;
 }
+.git-modal-grid {
+  display: grid;
+  gap: 10px;
+}
+.git-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.git-row select,
+.git-row input {
+  flex: 1;
+  padding: 8px 10px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+}
+.git-meta {
+  font-size: 12px;
+  color: #aaa;
+}
+.git-remote-list {
+  font-size: 12px;
+  color: #ccc;
+  background: #1f1f1f;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.git-log {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #a1a1aa;
+  background: #121212;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+.settings-modal-grid {
+  display: grid;
+  gap: 10px;
+}
+.settings-list {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px;
+  background: #1f1f1f;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.settings-row label {
+  width: 200px;
+  font-size: 11px;
+  color: #aaa;
+  word-break: break-word;
+}
+.settings-row input {
+  flex: 1;
+  padding: 6px 8px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+}
+.settings-comment {
+  font-size: 11px;
+  color: #666;
+  margin: 6px 0;
+}
 
 .message {
   margin: 10px 0;
@@ -274,6 +366,7 @@ h1 { margin-bottom: 5px; }
 #input-form {
   display: flex;
   gap: 10px;
+  align-items: flex-start;
 }
 #prompt {
   flex: 1;
@@ -283,6 +376,48 @@ h1 { margin-bottom: 5px; }
   border-radius: 6px;
   color: #fff;
   font-size: 14px;
+  min-height: 90px;
+  resize: vertical;
+}
+.image-dropzone {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px dashed #444;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+.image-dropzone.dragover {
+  border-color: #4CAF50;
+  color: #d1fae5;
+}
+.image-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.image-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #2a2a2a;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #e5e7eb;
+}
+.image-chip button {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+}
+.image-chip button:hover {
+  color: #f87171;
 }
 button {
   padding: 12px 20px;
@@ -634,7 +769,10 @@ button.secondary:hover { background: #777; }
       <button class="btn-small" onclick="showNewTaskModal()">+ New Task</button>
 
       <div class="file-tree" id="file-tree">
-        <h3>Files</h3>
+        <div class="file-tree-header">
+          <h3>Files</h3>
+          <button class="btn-small" onclick="showGitModal()">Git</button>
+        </div>
         <div id="file-tree-content">
           <span style="color: #666;">Select a project</span>
         </div>
@@ -643,25 +781,30 @@ button.secondary:hover { background: #777; }
 
     <!-- Main Chat Panel -->
     <div class="chat-panel">
-      <div class="status-bar">
-        <div id="status" class="status">Checking connection...</div>
-        <button id="heal-btn" class="secondary" onclick="runFullHealthCheck(true)">Heal</button>
-        <div class="model-selector">
-          <label for="model-select">Model</label>
-          <select id="model-select" disabled>
-            <option value="">Loading...</option>
-          </select>
-          <button id="model-apply" class="secondary" onclick="applyModelSelection()" disabled>Set</button>
-        </div>
+    <div class="status-bar">
+      <div id="status" class="status">Checking connection...</div>
+      <button id="heal-btn" class="secondary" onclick="runFullHealthCheck(true)">Heal</button>
+      <div class="model-selector">
+        <label for="model-select">Model</label>
+        <select id="model-select" disabled>
+          <option value="">Loading...</option>
+        </select>
+        <button id="model-apply" class="secondary" onclick="applyModelSelection()" disabled>Set</button>
       </div>
+      <button class="secondary" onclick="showSettingsModal()">Settings</button>
+    </div>
 
       <div id="messages"></div>
 
       <div id="input-form">
-        <input type="text" id="prompt" placeholder="Ask the agent to edit code...">
+        <textarea id="prompt" placeholder="Ask the agent to edit code..."></textarea>
         <button id="send">Send</button>
-        <button class="secondary" onclick="checkHealth()">Status</button>
       </div>
+      <div id="image-dropzone" class="image-dropzone">
+        Drag & drop images here, or <button class="btn-small" onclick="openImagePicker()">browse</button>
+        <input id="image-input" type="file" accept="image/*" multiple style="display:none;">
+      </div>
+      <div id="image-list" class="image-list"></div>
 
     </div>
   </div>
@@ -762,6 +905,73 @@ button.secondary:hover { background: #777; }
   </div>
 </div>
 
+<!-- Git Modal -->
+<div id="git-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <h3>Git</h3>
+    <div class="git-modal-grid">
+      <div class="git-meta" id="git-current-branch">Current branch: -</div>
+      <div class="git-meta" id="git-user-config">User: -</div>
+      <div class="git-row">
+        <button onclick="initGitRepo()">Init Repo</button>
+      </div>
+      <div class="git-row">
+        <input id="git-user-name" type="text" placeholder="user.name">
+        <input id="git-user-email" type="text" placeholder="user.email">
+        <button onclick="saveGitUser()">Save User</button>
+      </div>
+      <div class="git-row">
+        <select id="git-branch-select" disabled>
+          <option value="">No repo</option>
+        </select>
+        <button onclick="checkoutBranch()">Checkout</button>
+      </div>
+      <div class="git-row">
+        <input id="git-branch-input" type="text" placeholder="new branch name">
+        <button onclick="createBranch()">Create</button>
+      </div>
+      <div class="git-row">
+        <select id="git-remote-select" disabled>
+          <option value="">No remotes</option>
+        </select>
+        <button onclick="pullBranch()">Pull</button>
+        <button onclick="pushBranch()">Push</button>
+      </div>
+      <div class="git-row">
+        <input id="git-remote-name" type="text" placeholder="remote name">
+        <input id="git-remote-url" type="text" placeholder="remote url">
+        <button onclick="addRemote()">Add Remote</button>
+      </div>
+      <div class="git-remote-list" id="git-remote-list">No remotes</div>
+      <div class="git-log" id="git-log">Git output will appear here...</div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="hideGitModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settings-modal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <h3>Settings (.env)</h3>
+    <div class="settings-modal-grid">
+      <input id="settings-filter" type="text" placeholder="Filter settings...">
+      <div class="settings-list" id="settings-list">Loading...</div>
+      <div class="git-row">
+        <label><input type="checkbox" id="restart-main" checked> Restart main</label>
+        <label><input type="checkbox" id="restart-aider" checked> Restart aider</label>
+        <label><input type="checkbox" id="restart-ollama"> Restart ollama</label>
+        <label><input type="checkbox" id="restart-db"> Restart db</label>
+      </div>
+      <div class="modal-actions">
+        <button onclick="applySettings()">Apply</button>
+        <button class="secondary" onclick="hideSettingsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // DOM elements
 const messagesEl = document.getElementById('messages');
@@ -773,6 +983,26 @@ const modelApplyBtn = document.getElementById('model-apply');
 const projectListEl = document.getElementById('project-list');
 const taskListEl = document.getElementById('task-list');
 const fileTreeEl = document.getElementById('file-tree');
+const gitBranchSelectEl = document.getElementById('git-branch-select');
+const gitBranchInputEl = document.getElementById('git-branch-input');
+const gitRemoteSelectEl = document.getElementById('git-remote-select');
+const gitRemoteNameEl = document.getElementById('git-remote-name');
+const gitRemoteUrlEl = document.getElementById('git-remote-url');
+const gitCurrentBranchEl = document.getElementById('git-current-branch');
+const gitUserConfigEl = document.getElementById('git-user-config');
+const gitRemoteListEl = document.getElementById('git-remote-list');
+const gitUserNameEl = document.getElementById('git-user-name');
+const gitUserEmailEl = document.getElementById('git-user-email');
+const gitLogEl = document.getElementById('git-log');
+const imageDropzoneEl = document.getElementById('image-dropzone');
+const imageInputEl = document.getElementById('image-input');
+const imageListEl = document.getElementById('image-list');
+const settingsListEl = document.getElementById('settings-list');
+const settingsFilterEl = document.getElementById('settings-filter');
+const restartMainEl = document.getElementById('restart-main');
+const restartAiderEl = document.getElementById('restart-aider');
+const restartOllamaEl = document.getElementById('restart-ollama');
+const restartDbEl = document.getElementById('restart-db');
 
 // API endpoints - use relative URLs for main-api when served from main-api
 const MAIN_API = window.location.port === '8002' ? '' : 'http://localhost:8002';
@@ -791,6 +1021,58 @@ let selectedTask = null;
 let availableModels = [];
 let isModelSwitching = false;
 let referencedFiles = [];
+let attachedImages = [];
+let envEntries = [];
+
+// ============================================================================
+// Cookie Persistence
+// ============================================================================
+const COOKIE_KEYS = {
+  PROJECT_ID: 'agentic_project_id',
+  MODEL: 'agentic_model'
+};
+
+function setCookie(name, value, days = 365) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+function deleteCookie(name) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+}
+
+async function restoreSelectionsFromCookies() {
+  // Restore project selection
+  const savedProjectId = getCookie(COOKIE_KEYS.PROJECT_ID);
+  let projectRestored = false;
+
+  if (savedProjectId) {
+    const projectId = parseInt(savedProjectId, 10);
+    const projectExists = projects.some(p => p.id === projectId);
+    if (projectExists) {
+      await selectProject(projectId);
+      projectRestored = true;
+    } else {
+      // Project no longer exists, clear the cookie
+      deleteCookie(COOKIE_KEYS.PROJECT_ID);
+    }
+  }
+
+  // Fall back to first project if no valid cookie
+  if (!projectRestored && projects.length > 0) {
+    await selectProject(projects[0].id);
+  }
+
+  // NOTE: Model selection is NOT restored from cookie.
+  // The dropdown is set by loadModels() based on the actual API config (agent_model).
+  // This ensures the UI always reflects what Aider/Ollama are actually configured to use.
+  // The cookie is only used to track successful model switches for debugging.
+}
 
 // Extract workspace name from path (handles trailing slashes, bare names, etc.)
 function getWorkspaceName(path) {
@@ -821,6 +1103,9 @@ async function init() {
   await checkHealth();
   await loadModels();
   await loadProjects();
+  setupImageDropzone();
+  // Restore project and model selections from cookies (or fall back to first project)
+  await restoreSelectionsFromCookies();
   // Start log streaming for default tab only
   switchLogTab(currentLogTab);
   console.log('init() complete');
@@ -948,6 +1233,9 @@ async function applyModelSelection() {
     const prevModel = data.previous_model || 'unknown';
     addMessage('system', `Model switched: ${prevModel} → ${loadedModel}\nAgent: ${data.agent_model}\nAider: ${data.aider_model}`);
 
+    // Persist model selection to cookie
+    setCookie(COOKIE_KEYS.MODEL, loadedModel);
+
     // Reset switching flag BEFORE checkHealth so status shows correctly
     isModelSwitching = false;
     await checkHealth();
@@ -1016,10 +1304,7 @@ async function loadProjects() {
     projects = await res.json();
     console.log('loadProjects got projects:', projects);
     renderProjects();
-    // Auto-select first project to show files immediately
-    if (projects.length > 0 && !selectedProject) {
-      selectProject(projects[0].id);
-    }
+    // Note: Auto-selection now handled by restoreSelectionsFromCookies() in init()
   } catch (err) {
     console.error('loadProjects error:', err);
     projectListEl.innerHTML = '<li style="color: #ff6b6b;">Failed to load</li>';
@@ -1051,6 +1336,9 @@ async function selectProject(projectId) {
   selectedTask = null;
   renderProjects();
 
+  // Persist selection to cookie
+  setCookie(COOKIE_KEYS.PROJECT_ID, projectId);
+
   // Switch aider workspace (non-blocking)
   const workspaceName = getWorkspaceName(selectedProject.workspace_path);
   fetch(`${AIDER_API}/api/config`, {
@@ -1059,6 +1347,7 @@ async function selectProject(projectId) {
     body: JSON.stringify({ workspace: workspaceName })
   }).then(() => {
     addMessage('system', `Switched to workspace: ${workspaceName}`);
+    logAiderWorkspaceAccess();
   }).catch(err => {
     console.warn('Workspace switch failed:', err.message);
     addMessage('system', `Using workspace: ${workspaceName} (offline mode)`);
@@ -1069,7 +1358,8 @@ async function selectProject(projectId) {
   try {
     await Promise.all([
       loadTasks(projectId),
-      loadFileTree(projectId)
+      loadFileTree(projectId),
+      loadGitBranches(projectId)
     ]);
   } catch (err) {
     console.error('Error loading project data:', err);
@@ -1268,6 +1558,496 @@ function renderFileReferences() {
   promptEl.value = cleaned ? `${cleaned} ${tokens}` : tokens;
 }
 
+async function logAiderWorkspaceAccess() {
+  try {
+    const res = await fetch(`${AIDER_API}/api/config`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const root = data.config?.workspaces_dir || '';
+    const current = data.config?.current_workspace || '';
+    if (root && current) {
+      let displayRoot = root;
+      let displayCurrent = current;
+      if (selectedProject?.workspace_path?.startsWith('[%root%]')) {
+        displayRoot = '/mnt/c/dropbox/_coding/agentic/v2';
+        const subPath = selectedProject.workspace_path.replace('[%root%]', '').replace(/^\//, '');
+        displayCurrent = subPath ? subPath : '[%root%]';
+      }
+      addMessage('system', `Aider workspace root: ${displayRoot} (current: ${displayCurrent})`);
+    }
+  } catch (err) {
+    console.warn('Failed to fetch aider config:', err.message);
+  }
+}
+
+async function loadGitBranches(projectId) {
+  if (!projectId) {
+    return;
+  }
+  gitBranchSelectEl.disabled = true;
+  gitBranchSelectEl.innerHTML = '<option value="">Loading...</option>';
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${projectId}/git/status`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const branches = data.branches || [];
+    if (!branches.length) {
+      gitBranchSelectEl.innerHTML = '<option value="">No repo</option>';
+      gitRemoteSelectEl.innerHTML = '<option value="">No remotes</option>';
+      gitRemoteSelectEl.disabled = true;
+      gitRemoteListEl.textContent = 'No remotes';
+      gitCurrentBranchEl.textContent = 'Current branch: -';
+      gitUserConfigEl.textContent = 'User: -';
+      return;
+    }
+    gitBranchSelectEl.innerHTML = branches.map(branch => (
+      `<option value="${branch}">${branch}</option>`
+    )).join('');
+    if (data.current) {
+      gitBranchSelectEl.value = data.current;
+    }
+    gitBranchSelectEl.disabled = false;
+
+    const remotes = data.remotes || [];
+    if (remotes.length) {
+      gitRemoteSelectEl.innerHTML = remotes.map(remote => (
+        `<option value="${remote.name}">${remote.name}</option>`
+      )).join('');
+      gitRemoteSelectEl.disabled = false;
+      gitRemoteListEl.innerHTML = remotes.map(remote => (
+        `<div>${remote.name} → ${remote.url}</div>`
+      )).join('');
+    } else {
+      gitRemoteSelectEl.innerHTML = '<option value="">No remotes</option>';
+      gitRemoteSelectEl.disabled = true;
+      gitRemoteListEl.textContent = 'No remotes';
+    }
+
+    gitCurrentBranchEl.textContent = `Current branch: ${data.current || '-'}`;
+    const userName = data.user_name || 'unset';
+    const userEmail = data.user_email || 'unset';
+    gitUserConfigEl.textContent = `User: ${userName} <${userEmail}>`;
+    gitUserNameEl.value = data.user_name || '';
+    gitUserEmailEl.value = data.user_email || '';
+  } catch (err) {
+    gitBranchSelectEl.innerHTML = '<option value="">No repo</option>';
+    gitRemoteSelectEl.innerHTML = '<option value="">No remotes</option>';
+    gitRemoteSelectEl.disabled = true;
+    gitRemoteListEl.textContent = 'No remotes';
+    gitCurrentBranchEl.textContent = 'Current branch: -';
+    gitUserConfigEl.textContent = 'User: -';
+    gitUserNameEl.value = '';
+    gitUserEmailEl.value = '';
+    console.warn('Failed to load branches:', err.message);
+  }
+}
+
+async function checkoutBranch() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  const branch = gitBranchSelectEl.value;
+  if (!branch) {
+    return;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    addMessage('system', `Checked out branch: ${data.current || branch}`);
+    appendGitLog(data);
+    await loadGitBranches(selectedProject.id);
+  } catch (err) {
+    alert('Failed to checkout branch: ' + err.message);
+  }
+}
+
+async function createBranch() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  const branch = gitBranchInputEl.value.trim();
+  if (!branch) {
+    return;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch, create: true })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    gitBranchInputEl.value = '';
+    addMessage('system', `Created branch: ${data.current || branch}`);
+    appendGitLog(data);
+    await loadGitBranches(selectedProject.id);
+  } catch (err) {
+    alert('Failed to create branch: ' + err.message);
+  }
+}
+
+async function pullBranch() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  const remote = gitRemoteSelectEl.value;
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/pull`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remote })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    addMessage('system', `Pulled from ${remote || 'origin'}`);
+    appendGitLog(data);
+  } catch (err) {
+    alert('Failed to pull: ' + err.message);
+  }
+}
+
+async function pushBranch() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  const remote = gitRemoteSelectEl.value;
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remote })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    addMessage('system', `Pushed to ${remote || 'origin'}`);
+    appendGitLog(data);
+  } catch (err) {
+    alert('Failed to push: ' + err.message);
+  }
+}
+
+async function addRemote() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  const name = gitRemoteNameEl.value.trim();
+  const url = gitRemoteUrlEl.value.trim();
+  if (!name || !url) {
+    alert('Remote name and URL required');
+    return;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/remote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, url })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    gitRemoteNameEl.value = '';
+    gitRemoteUrlEl.value = '';
+    addMessage('system', `Added remote: ${name}`);
+    appendGitLog(data);
+    await loadGitBranches(selectedProject.id);
+  } catch (err) {
+    alert('Failed to add remote: ' + err.message);
+  }
+}
+
+function showGitModal() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  document.getElementById('git-modal').style.display = 'flex';
+  loadGitBranches(selectedProject.id);
+}
+
+function hideGitModal() {
+  document.getElementById('git-modal').style.display = 'none';
+}
+
+function showSettingsModal() {
+  document.getElementById('settings-modal').style.display = 'flex';
+  loadSettings();
+}
+
+function hideSettingsModal() {
+  document.getElementById('settings-modal').style.display = 'none';
+}
+
+function setupImageDropzone() {
+  if (!imageDropzoneEl || !imageInputEl) {
+    return;
+  }
+  imageDropzoneEl.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    imageDropzoneEl.classList.add('dragover');
+  });
+  imageDropzoneEl.addEventListener('dragleave', () => {
+    imageDropzoneEl.classList.remove('dragover');
+  });
+  imageDropzoneEl.addEventListener('drop', (event) => {
+    event.preventDefault();
+    imageDropzoneEl.classList.remove('dragover');
+    const files = Array.from(event.dataTransfer.files || []);
+    handleImageFiles(files);
+  });
+  imageInputEl.addEventListener('change', (event) => {
+    const files = Array.from(event.target.files || []);
+    handleImageFiles(files);
+    imageInputEl.value = '';
+  });
+}
+
+function openImagePicker() {
+  if (imageInputEl) {
+    imageInputEl.click();
+  }
+}
+
+function handleImageFiles(files) {
+  const images = files.filter(file => file.type.startsWith('image/'));
+  images.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      attachedImages.push({
+        name: file.name,
+        dataUrl: reader.result
+      });
+      renderImageList();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderImageList() {
+  if (!imageListEl) return;
+  if (attachedImages.length === 0) {
+    imageListEl.innerHTML = '';
+    return;
+  }
+  imageListEl.innerHTML = attachedImages.map((img, idx) => `
+    <span class="image-chip">
+      ${img.name}
+      <button onclick="removeImage(${idx})">×</button>
+    </span>
+  `).join('');
+}
+
+function removeImage(index) {
+  attachedImages.splice(index, 1);
+  renderImageList();
+}
+
+function clearImages() {
+  attachedImages = [];
+  renderImageList();
+}
+
+async function describeImages(images) {
+  const results = [];
+  for (const img of images) {
+    const base64 = (img.dataUrl || '').split(',')[1] || '';
+    if (!base64) {
+      results.push(`[Image: ${img.name}]\nDescription unavailable (invalid data).`);
+      continue;
+    }
+    try {
+      const res = await fetch(`${AIDER_API}/api/vision/describe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: img.name,
+          data: base64,
+          compact: true
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.description) {
+        results.push(`[Image: ${img.name}]\n${data.description}`);
+      } else {
+        results.push(`[Image: ${img.name}]\nDescription unavailable (${data.error || 'vision model not configured'}).`);
+      }
+    } catch (err) {
+      results.push(`[Image: ${img.name}]\nDescription unavailable (${err.message}).`);
+    }
+  }
+  return results;
+}
+
+async function initGitRepo() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/init`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    addMessage('system', 'Initialized git repo');
+    appendGitLog(data);
+    await loadGitBranches(selectedProject.id);
+  } catch (err) {
+    alert('Failed to init repo: ' + err.message);
+  }
+}
+
+async function saveGitUser() {
+  if (!selectedProject) {
+    alert('Select a project first');
+    return;
+  }
+  const name = gitUserNameEl.value.trim();
+  const email = gitUserEmailEl.value.trim();
+  if (!name || !email) {
+    alert('User name and email required');
+    return;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/projects/${selectedProject.id}/git/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    addMessage('system', `Git user set: ${name} <${email}>`);
+    appendGitLog(data);
+    await loadGitBranches(selectedProject.id);
+  } catch (err) {
+    alert('Failed to save git user: ' + err.message);
+  }
+}
+
+function appendGitLog(payload) {
+  if (!gitLogEl || !payload) {
+    return;
+  }
+  const stdout = (payload.stdout || '').trim();
+  const stderr = (payload.stderr || '').trim();
+  const lines = [];
+  if (stdout) lines.push(stdout);
+  if (stderr) lines.push(stderr);
+  if (!lines.length) {
+    lines.push('OK');
+  }
+  const stamp = new Date().toLocaleTimeString();
+  const entry = `[${stamp}] ${lines.join('\\n')}`;
+  gitLogEl.textContent = `${entry}\\n\\n${gitLogEl.textContent}`.trim();
+}
+
+async function loadSettings() {
+  settingsListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/api/env`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    envEntries = data.entries || [];
+    renderSettings();
+  } catch (err) {
+    settingsListEl.textContent = `Failed to load settings: ${err.message}`;
+  }
+}
+
+function renderSettings() {
+  const filter = (settingsFilterEl.value || '').toLowerCase();
+  const rows = envEntries.map((entry, idx) => {
+    if (entry.type === 'pair') {
+      if (filter && !entry.key.toLowerCase().includes(filter)) {
+        return '';
+      }
+      return `
+        <div class="settings-row">
+          <label>${entry.key}</label>
+          <input data-env-index="${idx}" value="${entry.value || ''}">
+        </div>
+      `;
+    }
+    if (entry.type === 'comment' && entry.value) {
+      if (filter) return '';
+      return `<div class="settings-comment">${entry.value}</div>`;
+    }
+    return '';
+  }).join('');
+  settingsListEl.innerHTML = rows || '<div class="settings-comment">No settings</div>';
+}
+
+async function applySettings() {
+  const updates = {};
+  settingsListEl.querySelectorAll('input[data-env-index]').forEach(input => {
+    const index = Number(input.dataset.envIndex);
+    const entry = envEntries[index];
+    if (entry && entry.type === 'pair') {
+      updates[entry.key] = input.value;
+    }
+  });
+
+  const restartServices = [];
+  if (restartMainEl.checked) restartServices.push('main');
+  if (restartAiderEl.checked) restartServices.push('aider');
+  if (restartOllamaEl.checked) restartServices.push('ollama');
+  if (restartDbEl.checked) restartServices.push('db');
+
+  try {
+    const res = await fetch(`${MAIN_API}/api/env`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates, restart_services: restartServices })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    const data = await res.json();
+    addMessage('system', `Settings updated: ${data.updated_keys?.length || 0} keys`);
+    hideSettingsModal();
+  } catch (err) {
+    alert('Failed to apply settings: ' + err.message);
+  }
+}
+
+if (settingsFilterEl) {
+  settingsFilterEl.addEventListener('input', renderSettings);
+}
+
 function openFileInVSCode(path) {
   if (!selectedProject || !path) {
     return;
@@ -1327,6 +2107,8 @@ function hideModals() {
   document.getElementById('edit-project-modal').style.display = 'none';
   document.getElementById('new-task-modal').style.display = 'none';
   document.getElementById('edit-task-modal').style.display = 'none';
+  document.getElementById('git-modal').style.display = 'none';
+  document.getElementById('settings-modal').style.display = 'none';
   editingProjectId = null;
   editingTaskId = null;
 }
@@ -1437,6 +2219,8 @@ async function deleteProject(projectId) {
       tasks = [];
       taskListEl.innerHTML = '<li style="color: #666;">Select a project</li>';
       document.getElementById('file-tree-content').innerHTML = '<span style="color: #666;">Select a project</span>';
+      // Clear the project cookie since deleted project was selected
+      deleteCookie(COOKIE_KEYS.PROJECT_ID);
     }
     renderProjects();
   } catch (err) {
@@ -1559,6 +2343,13 @@ async function sendMessage() {
       fullPrompt = `Task: ${selectedTask.title}\n${selectedTask.description || ''}\n\nRequest: ${text}`;
     }
 
+    if (attachedImages.length > 0) {
+      const imageDescriptions = await describeImages(attachedImages);
+      if (imageDescriptions.length > 0) {
+        fullPrompt = `${fullPrompt}\n\n${imageDescriptions.join('\n\n')}`;
+      }
+    }
+
     const res = await fetch(`${AIDER_API}/api/agent/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1593,6 +2384,7 @@ async function sendMessage() {
   }
 
   sendBtn.disabled = false;
+  clearImages();
 }
 
 // ============================================================================

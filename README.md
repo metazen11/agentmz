@@ -1,162 +1,366 @@
 # Workflow Hub v2
 
-Minimal agentic task system with Aider integration for code editing.
+Minimal agentic task system with AI-powered code editing via Aider and local LLMs via Ollama.
+
+## Quick Start
+
+```bash
+# One-command installation (creates venv, starts services, opens browser)
+./install.sh
+
+# Or start existing installation (opens browser)
+./start.sh
+```
+
+Both scripts automatically open the chat UI in your browser when complete.
+Use `--no-browser` flag to disable: `./start.sh --no-browser`
 
 ## Architecture
 
 ```
 v2/
-├── main.py              # FastAPI app (port 8002)
+├── install.sh           # One-command installer (venv, deps, Docker, migrations)
+├── start.sh             # Start services after installation
+├── chat.html            # Single-file web UI (vanilla JS, no build step)
+├── main.py              # FastAPI main API (port 8002)
 ├── models.py            # SQLAlchemy models (Project, Task)
 ├── database.py          # PostgreSQL connection
-├── director.py          # Task orchestration loop
-├── .env                 # Configuration variables
-├── agent/
-│   ├── aider_runner.py  # Aider API client
-│   ├── runner.py        # Ollama native tool calling (alternative)
-│   └── tools.py         # Agent tools (list_files, edit_file, etc.)
+├── .env                 # Configuration (single source of truth)
+│
 ├── scripts/
-│   └── aider_api.py     # Aider HTTP wrapper (port 8001)
+│   └── aider_api.py     # Aider HTTP wrapper API (port 8001)
+│
 ├── docker/
-│   ├── docker-compose.yml
-│   └── Dockerfile.aider-api
-├── workspaces/          # Project workspaces
-│   └── poc/             # Proof of concept workspace
+│   ├── docker-compose.yml       # Container orchestration
+│   ├── Dockerfile.aider-api     # Aider API container
+│   ├── Dockerfile.main-api      # Main API container
+│   └── Dockerfile.ollama        # Custom Ollama with init script
+│
+├── workspaces/          # Project workspaces (mounted to containers)
+│   ├── poc/             # Proof of concept workspace
+│   └── beatbridge_app/  # Example project workspace
+│
+├── alembic/             # Database migrations
+│   ├── env.py
+│   └── versions/
+│
 └── tests/
-    └── test_*.py        # Playwright browser tests
+    ├── test_aider_api.py    # API endpoint tests
+    └── test_poc_game.py     # Integration tests
 ```
 
-## Quick Start
+## Installation
 
-### 1. Start Services
+### Prerequisites
+
+- Python 3.10+
+- Docker Desktop
+- Git
+
+### Full Installation
 
 ```bash
-# Terminal 1: Start Ollama (if not running)
-ollama serve
-
-# Terminal 2: Start Aider API
-cd v2
-source .env
-python scripts/aider_api.py
-
-# Terminal 3: Start FastAPI
-cd v2
-source .env
-python main.py
+cd /mnt/c/dropbox/_coding/agentic/v2
+./install.sh
 ```
 
-### 2. Verify Services
+The installer will:
+1. Check prerequisites (Python, Docker)
+2. Create Python virtual environment
+3. Install dependencies from requirements.txt
+4. Install Playwright browsers
+5. Create .env with defaults (if missing)
+6. Start Docker services
+7. Wait for all services to be healthy
+8. Run database migrations
+9. Pull Ollama models (qwen3:1.7b)
+10. Configure agentmz.local domain
+11. Open browser to the UI
+
+### Installation Options
 
 ```bash
-# Ollama
-curl http://localhost:11434/api/tags
-
-# Aider API
-curl http://localhost:8001/health
-
-# FastAPI
-curl http://localhost:8002/
+./install.sh --skip-models   # Skip Ollama model pulling
+./install.sh --skip-hosts    # Skip /etc/hosts modification
+./install.sh --no-browser    # Don't open browser at end
+./install.sh --help          # Show all options
 ```
 
-### 3. Create and Trigger a Task
+## Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Main API | 8002 | FastAPI - projects, tasks, health, WebSocket logs |
+| Aider API | 8001 | Code editing agent with Ollama integration |
+| PostgreSQL | 5433 | Database for projects and tasks |
+| Ollama | 11435 | Local LLM serving |
+
+### Docker Containers
 
 ```bash
+# View status
+docker compose --env-file .env -f docker/docker-compose.yml ps
+
+# View logs
+docker compose --env-file .env -f docker/docker-compose.yml logs -f
+
+# Restart a service
+docker compose --env-file .env -f docker/docker-compose.yml restart aider-api
+```
+
+## Web UI (chat.html)
+
+The UI is a single-file vanilla JavaScript application served by the main API at `/`.
+
+### Features
+
+- **Project Management** - Create, edit, delete projects
+- **Task Management** - Create tasks with stages (dev, qa, review, complete)
+- **File Browser** - Browse workspace files, click to add as context
+- **Chat Interface** - Send prompts to the AI agent
+- **Model Selector** - Switch between available Ollama models
+- **Container Logs** - Real-time WebSocket log streaming
+- **VS Code Integration** - Double-click files to open in VS Code
+- **Cookie Persistence** - Selected project and model persist across page reloads
+
+### Cookie Persistence
+
+The UI stores selections in browser cookies:
+- `agentic_project_id` - Currently selected project
+- `agentic_model` - Currently selected model
+
+Cookies expire after 1 year and are automatically restored on page load.
+
+## API Endpoints
+
+### Core API Quick Reference
+
+```bash
+# Health check
+curl http://localhost:8002/health/full
+
+# List projects
+curl http://localhost:8002/projects
+
 # Create project
 curl -X POST http://localhost:8002/projects \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Project", "workspace_path": "poc"}'
+  -d '{"name": "My App", "workspace_path": "my_app"}'
 
 # Create task
 curl -X POST http://localhost:8002/tasks \
   -H "Content-Type: application/json" \
-  -d '{"project_id": 1, "title": "Create hello world", "description": "Create index.html with animated Hello World"}'
+  -d '{"project_id": 1, "title": "Add login page"}'
 
-# Trigger agent
-curl -X POST http://localhost:8002/tasks/1/trigger
+# Run agent
+curl -X POST http://localhost:8001/api/agent/run \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Create index.html with hello world", "workspace": "poc"}'
+
+# Switch model
+curl -X POST http://localhost:8001/api/model/switch \
+  -H "Content-Type: application/json" \
+  -d '{"model": "qwen3:1.7b"}'
 ```
+
+### Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health/full` | Full system health check |
+| GET | `/` | Serves chat.html UI |
+
+### Projects
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/projects` | List all projects |
+| POST | `/projects` | Create project |
+| GET | `/projects/{id}` | Get project details |
+| PATCH | `/projects/{id}` | Update project |
+| DELETE | `/projects/{id}` | Delete project |
+| GET | `/projects/{id}/files` | Get file tree |
+| GET | `/projects/{id}/tasks` | List tasks (tree with subtasks) |
+
+### Tasks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/tasks` | Create task |
+| GET | `/tasks/{id}` | Get task details |
+| PATCH | `/tasks/{id}` | Update task |
+| DELETE | `/tasks/{id}` | Delete task |
+
+### Agent (Aider API)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/config` | Get configuration |
+| POST | `/api/config` | Update workspace/model |
+| POST | `/api/agent/run` | Execute agent task |
+| POST | `/api/model/switch` | Switch Ollama model |
+| GET | `/api/models` | List available models |
+| POST | `/api/grep` | Search file contents |
+| POST | `/api/glob` | Find files by pattern |
+| POST | `/api/bash` | Run shell commands |
+| POST | `/api/read` | Read file contents |
+
+### Operations
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/ops/restart/{service}` | Restart container (ollama, aider, main) |
+| GET | `/logs/{container}` | Get recent container logs |
+| WS | `/ws/logs/{container}` | Stream container logs |
 
 ## Configuration
 
-Edit `.env` to customize:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AIDER_MODEL` | `ollama_chat/qwen3:4b` | LLM model for Aider |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `DATABASE_URL` | `postgresql://wfhub:wfhub@localhost:5433/agentic` | PostgreSQL connection |
-| `FASTAPI_PORT` | `8002` | FastAPI server port |
-| `AIDER_API_PORT` | `8001` | Aider API server port |
-
-## Docker Setup
+All configuration is in `.env`:
 
 ```bash
-cd v2/docker
-docker compose up -d
+# Database
+DATABASE_URL=postgresql://wfhub:wfhub@localhost:5433/agentic
+POSTGRES_USER=wfhub
+POSTGRES_PASSWORD=wfhub
+POSTGRES_DB=agentic
+
+# Ollama LLM
+OLLAMA_URL=http://localhost:11435
+OLLAMA_API_BASE=http://localhost:11435
+
+# Models
+AIDER_MODEL=ollama_chat/qwen3:1.7b
+AGENT_MODEL=qwen3:1.7b
+
+# Ports
+FASTAPI_PORT=8002
+AIDER_API_PORT=8001
+
+# Workspaces
+WORKSPACES_DIR=workspaces
+DEFAULT_WORKSPACE=poc
 ```
 
-Services:
-- `wfhub-v2-db`: PostgreSQL on port 5433
-- `wfhub-v2-ollama`: Ollama on port 11435
-- `wfhub-v2-aider-api`: Aider API on port 8001
+## Database
 
-## API Endpoints
+### Models
 
-### Projects
-- `GET /projects` - List all projects
-- `POST /projects` - Create project
-- `GET /projects/{id}` - Get project details
-- `DELETE /projects/{id}` - Delete project
-
-### Tasks
-- `GET /projects/{id}/tasks` - List tasks (tree with subtasks)
-- `POST /tasks` - Create task
-- `GET /tasks/{id}` - Get task details
-- `PATCH /tasks/{id}` - Update task
-- `POST /tasks/{id}/trigger` - Trigger Aider agent
-
-### Director
-- `GET /director/status` - Check director status
-- `POST /director/cycle` - Run one director cycle
-
-## Models
-
-### Project
+**Project**
 - `id`, `name`, `workspace_path`, `environment`, `created_at`
 
-### Task
+**Task**
 - `id`, `project_id`, `parent_id`, `title`, `description`
 - `status`: backlog | in_progress | done | failed
 - `stage`: dev | qa | review | complete
 
+### Migrations
+
+```bash
+# Apply migrations
+alembic upgrade head
+
+# Create new migration
+alembic revision --autogenerate -m "Add new column"
+
+# Check status
+alembic current
+```
+
+## Testing
+
+```bash
+# Activate venv
+source venv/bin/activate
+
+# Run all tests
+pytest tests/ -v
+
+# Run specific test
+pytest tests/test_aider_api.py -v
+
+# Run with output
+pytest tests/test_poc_game.py -v -s
+```
+
+## Development
+
+### Start Services
+
+```bash
+./start.sh                    # Default workspace, opens browser
+./start.sh -w beatbridge_app  # Specific workspace
+./start.sh --no-browser       # Don't open browser
+```
+
+### Manual Commands
+
+```bash
+# Start Docker services
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+
+# Run migrations
+source venv/bin/activate
+alembic upgrade head
+
+# View container logs
+docker logs -f wfhub-v2-aider-api
+docker logs -f wfhub-v2-main-api
+```
+
+### Troubleshooting
+
+```bash
+# Check service health
+curl http://localhost:8002/health/full | python3 -m json.tool
+
+# Check Ollama models
+curl http://localhost:11435/api/tags
+
+# Pull missing model
+docker exec wfhub-v2-ollama ollama pull qwen3:1.7b
+
+# Reset database (careful - deletes data!)
+docker compose --env-file .env -f docker/docker-compose.yml down
+docker volume rm docker_v2_pgdata
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+alembic upgrade head
+```
+
 ## Agent Flow
 
 ```
-1. POST /tasks/{id}/trigger
-2. → Get task + project from DB
-3. → Call aider_runner.run_agent(workspace, task)
-4. → Aider API executes prompt in workspace
-5. → Returns result (PASS/FAIL)
-6. → Update task status
-```
-
-## Tests
-
-```bash
-cd v2
-pytest tests/ -v
+1. User sends prompt in chat UI
+2. → Main API receives request
+3. → Calls Aider API /api/agent/run
+4. → Agent uses tools (grep, glob, bash, read, edit)
+5. → Aider executes code edits
+6. → Returns result (PASS/FAIL with summary)
+7. → UI displays response with tool call details
 ```
 
 ## Workspaces
 
-Each project has a workspace directory under `v2/workspaces/`.
-The Aider agent operates within this workspace for file operations.
+Each project has a workspace directory under `v2/workspaces/`. The agent operates within this workspace for file operations.
+
+Special workspace: `[%root%]` - Points to the v2 project root itself (dogfooding).
 
 Example workspace structure:
 ```
 v2/workspaces/poc/
 ├── .git/
-├── .pipeline/
-│   └── result.json
-├── index.html
-└── styles.css
+├── game/
+│   └── index.html
+└── chat.html
 ```
+
+## Domain Configuration
+
+The installer adds `agentmz.local` to `/etc/hosts`:
+```
+127.0.0.1 agentmz.local
+```
+
+Access the UI at:
+- http://agentmz.local:8002
+- http://localhost:8002

@@ -3,6 +3,9 @@ import asyncio
 import json
 import os
 import time
+import re
+import subprocess
+import threading
 import itertools
 import httpx
 from collections import deque
@@ -14,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime
+from pathlib import Path
 
 from database import get_db
 from models import Project, Task
@@ -31,6 +35,8 @@ app.add_middleware(
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+ENV_FILE_PATH = Path(os.getenv("PROJECT_ROOT", Path(__file__).parent)).resolve() / ".env"
 
 
 # Pydantic schemas
@@ -87,6 +93,26 @@ class TaskResponse(BaseModel):
 
 
 TaskResponse.model_rebuild()
+
+
+class GitCheckoutRequest(BaseModel):
+    branch: str
+    create: bool = False
+
+
+class GitRemoteRequest(BaseModel):
+    name: str
+    url: str
+
+
+class GitRemoteActionRequest(BaseModel):
+    remote: Optional[str] = None
+    branch: Optional[str] = None
+
+
+class GitUserConfigRequest(BaseModel):
+    name: str
+    email: str
 
 
 # Root endpoint - serve chat interface
@@ -183,6 +209,25 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
+    workspace_path = resolve_workspace_path(db_project.workspace_path)
+    try:
+        workspace_path.mkdir(parents=True, exist_ok=True)
+        if not (workspace_path / ".git").exists():
+            subprocess.run(["git", "-C", str(workspace_path), "init"], check=True, capture_output=True)
+            git_name = os.getenv("GIT_USER_NAME", "Aider Agent")
+            git_email = os.getenv("GIT_USER_EMAIL", "aider@local")
+            subprocess.run(
+                ["git", "-C", str(workspace_path), "config", "user.name", git_name],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(workspace_path), "config", "user.email", git_email],
+                check=True,
+                capture_output=True,
+            )
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git init error: {exc.stderr}")
     return db_project
 
 
@@ -390,6 +435,141 @@ def restart_service(service: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _restart_services(services: list[str]) -> dict:
+    import docker
+
+    allowed = {"aider", "ollama", "main", "db"}
+    invalid = [s for s in services if s not in allowed]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Unsupported services: {', '.join(invalid)}")
+
+    client = docker.from_env()
+    results = {}
+
+    def restart_now(service_name: str):
+        container_name = CONTAINER_NAMES.get(service_name)
+        if not container_name:
+            results[service_name] = {"success": False, "error": "Unknown container"}
+            return
+        try:
+            container = client.containers.get(container_name)
+            container.restart(timeout=10)
+            results[service_name] = {"success": True, "container": container_name}
+        except docker.errors.NotFound:
+            results[service_name] = {"success": False, "error": "Container not found"}
+        except Exception as exc:
+            results[service_name] = {"success": False, "error": str(exc)}
+
+    # Restart non-main services first to avoid self-restart mid-request
+    for name in services:
+        if name != "main":
+            restart_now(name)
+
+    if "main" in services:
+        def delayed_restart():
+            time.sleep(1)
+            restart_now("main")
+        threading.Thread(target=delayed_restart, daemon=True).start()
+        results["main"] = {"success": True, "container": CONTAINER_NAMES.get("main"), "delayed": True}
+
+    return results
+
+
+def _parse_env_line(line: str) -> tuple[str, str, str, str] | None:
+    if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+        return None
+    prefix, rest = line.split("=", 1)
+    key = prefix.strip()
+    if not key:
+        return None
+    value = rest.rstrip("\n")
+    return key, prefix + "=", value, "\n" if line.endswith("\n") else ""
+
+
+def _read_env_file() -> list[dict]:
+    if not ENV_FILE_PATH.exists():
+        return []
+    entries = []
+    with ENV_FILE_PATH.open("r", encoding="utf-8") as handle:
+        for line in handle.readlines():
+            stripped = line.rstrip("\n")
+            if not stripped:
+                entries.append({"type": "blank"})
+                continue
+            if stripped.lstrip().startswith("#") or "=" not in stripped:
+                entries.append({"type": "comment", "value": stripped})
+                continue
+            parsed = _parse_env_line(stripped)
+            if not parsed:
+                entries.append({"type": "comment", "value": stripped})
+                continue
+            key, _, value, _ = parsed
+            entries.append({"type": "pair", "key": key, "value": value})
+    return entries
+
+
+def _write_env_file(updates: dict) -> list[str]:
+    if not ENV_FILE_PATH.exists():
+        raise HTTPException(status_code=404, detail=".env not found")
+
+    updated_keys = []
+    seen_keys = set()
+    new_lines = []
+
+    backup_text = ENV_FILE_PATH.read_text(encoding="utf-8")
+    backup_path = ENV_FILE_PATH.with_suffix(".env_bak.txt")
+    backup_path.write_text(backup_text, encoding="utf-8")
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    history_path = ENV_FILE_PATH.with_name(f".env_bak_{timestamp}.txt")
+    history_path.write_text(backup_text, encoding="utf-8")
+    with ENV_FILE_PATH.open("r", encoding="utf-8") as handle:
+        lines = handle.readlines()
+
+    for line in lines:
+        parsed = _parse_env_line(line)
+        if not parsed:
+            new_lines.append(line)
+            continue
+        key, prefix, value, newline = parsed
+        seen_keys.add(key)
+        if key in updates:
+            new_value = str(updates[key])
+            new_lines.append(f"{prefix}{new_value}{newline}")
+            updated_keys.append(key)
+        else:
+            new_lines.append(line)
+
+    for key, value in updates.items():
+        if key not in seen_keys:
+            new_lines.append(f"{key}={value}\n")
+            updated_keys.append(key)
+
+    ENV_FILE_PATH.write_text("".join(new_lines), encoding="utf-8")
+    return updated_keys
+
+
+@app.get("/api/env")
+def get_env_settings():
+    """Return .env entries for editing."""
+    return {"success": True, "entries": _read_env_file()}
+
+
+@app.post("/api/env")
+def update_env_settings(payload: dict):
+    """Update .env values and restart services if requested."""
+    updates = payload.get("updates", {})
+    if not isinstance(updates, dict):
+        raise HTTPException(status_code=400, detail="updates must be an object")
+
+    updated_keys = _write_env_file(updates)
+    services = payload.get("restart_services", [])
+    if services:
+        restart_results = _restart_services(services)
+    else:
+        restart_results = {}
+    return {"success": True, "updated_keys": updated_keys, "restarted": restart_results}
+
+
 # ============================================================================
 # File Browser for Workspaces
 # ============================================================================
@@ -472,6 +652,340 @@ def list_project_files(project_id: int, db: Session = Depends(get_db)):
         "workspace": display_name,
         "files": tree.get("children", []) if tree else []
     }
+
+
+def _validate_branch_name(branch: str) -> None:
+    if not branch or not isinstance(branch, str):
+        raise HTTPException(status_code=400, detail="branch required")
+    if branch.startswith("-") or branch in {".", ".."}:
+        raise HTTPException(status_code=400, detail="invalid branch name")
+    if ".." in branch or "@" in branch or "~" in branch or "\\" in branch:
+        raise HTTPException(status_code=400, detail="invalid branch name")
+    if not re.match(r"^[A-Za-z0-9._/-]+$", branch):
+        raise HTTPException(status_code=400, detail="invalid branch name")
+
+
+@app.get("/projects/{project_id}/git/branches")
+def list_git_branches(project_id: int, db: Session = Depends(get_db)):
+    """List git branches for a project's workspace."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (workspace_path / ".git").exists():
+        return {"branches": [], "current": None}
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(workspace_path), "branch", "--list"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        branches = []
+        current = None
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("*"):
+                current = line.replace("*", "").strip()
+                branches.append(current)
+            else:
+                branches.append(line)
+        return {"branches": branches, "current": current}
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
+
+
+@app.get("/projects/{project_id}/git/status")
+def git_status(project_id: int, db: Session = Depends(get_db)):
+    """Get git status, branches, and remotes for a workspace."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (workspace_path / ".git").exists():
+        return {"branches": [], "current": None, "remotes": [], "user_name": "", "user_email": ""}
+
+    try:
+        branches_result = subprocess.run(
+            ["git", "-C", str(workspace_path), "branch", "--list"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        branches = []
+        current = None
+        for line in branches_result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("*"):
+                current = line.replace("*", "").strip()
+                branches.append(current)
+            else:
+                branches.append(line)
+
+        remotes_result = subprocess.run(
+            ["git", "-C", str(workspace_path), "remote", "-v"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        remotes = {}
+        for line in remotes_result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                name, url = parts[0], parts[1]
+                if name not in remotes:
+                    remotes[name] = url
+
+        user_name = subprocess.run(
+            ["git", "-C", str(workspace_path), "config", "--get", "user.name"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        user_email = subprocess.run(
+            ["git", "-C", str(workspace_path), "config", "--get", "user.email"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+
+        return {
+            "branches": branches,
+            "current": current,
+            "remotes": [{"name": name, "url": url} for name, url in remotes.items()],
+            "user_name": user_name,
+            "user_email": user_email,
+        }
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
+
+
+@app.post("/projects/{project_id}/git/remote")
+def add_git_remote(
+    project_id: int,
+    payload: GitRemoteRequest,
+    db: Session = Depends(get_db),
+):
+    """Add or update a git remote."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (workspace_path / ".git").exists():
+        raise HTTPException(status_code=400, detail="Workspace is not a git repo")
+
+    _validate_branch_name(payload.name)
+    try:
+        subprocess.run(
+            ["git", "-C", str(workspace_path), "remote", "remove", payload.name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        result = subprocess.run(
+            ["git", "-C", str(workspace_path), "remote", "add", payload.name, payload.url],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return {"success": True, "stdout": result.stdout, "stderr": result.stderr}
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
+
+
+@app.post("/projects/{project_id}/git/pull")
+def pull_git_remote(
+    project_id: int,
+    payload: GitRemoteActionRequest,
+    db: Session = Depends(get_db),
+):
+    """Pull from a git remote."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (workspace_path / ".git").exists():
+        raise HTTPException(status_code=400, detail="Workspace is not a git repo")
+
+    remote = payload.remote or "origin"
+    branch = payload.branch
+    cmd = ["git", "-C", str(workspace_path), "pull", remote]
+    if branch:
+        cmd.append(branch)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return {"success": True, "stdout": result.stdout, "stderr": result.stderr}
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
+
+
+@app.post("/projects/{project_id}/git/push")
+def push_git_remote(
+    project_id: int,
+    payload: GitRemoteActionRequest,
+    db: Session = Depends(get_db),
+):
+    """Push to a git remote."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (workspace_path / ".git").exists():
+        raise HTTPException(status_code=400, detail="Workspace is not a git repo")
+
+    remote = payload.remote or "origin"
+    branch = payload.branch
+    cmd = ["git", "-C", str(workspace_path), "push", remote]
+    if branch:
+        cmd.append(branch)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return {"success": True, "stdout": result.stdout, "stderr": result.stderr}
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
+
+
+@app.post("/projects/{project_id}/git/init")
+def init_git_repo(project_id: int, db: Session = Depends(get_db)):
+    """Initialize a git repo in the project's workspace if missing."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(workspace_path), "init"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        git_name = os.getenv("GIT_USER_NAME", "Aider Agent")
+        git_email = os.getenv("GIT_USER_EMAIL", "aider@local")
+        subprocess.run(
+            ["git", "-C", str(workspace_path), "config", "user.name", git_name],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(workspace_path), "config", "user.email", git_email],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return {"success": True, "stdout": result.stdout, "stderr": result.stderr}
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
+
+
+@app.post("/projects/{project_id}/git/config")
+def set_git_user_config(
+    project_id: int,
+    payload: GitUserConfigRequest,
+    db: Session = Depends(get_db),
+):
+    """Set git user.name and user.email for the workspace repo."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (workspace_path / ".git").exists():
+        raise HTTPException(status_code=400, detail="Workspace is not a git repo")
+
+    if not payload.name or not payload.email:
+        raise HTTPException(status_code=400, detail="name and email required")
+
+    try:
+        name_result = subprocess.run(
+            ["git", "-C", str(workspace_path), "config", "user.name", payload.name],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        email_result = subprocess.run(
+            ["git", "-C", str(workspace_path), "config", "user.email", payload.email],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return {
+            "success": True,
+            "stdout": "\n".join([name_result.stdout, email_result.stdout]).strip(),
+            "stderr": "\n".join([name_result.stderr, email_result.stderr]).strip(),
+        }
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
+
+
+@app.post("/projects/{project_id}/git/checkout")
+def checkout_git_branch(
+    project_id: int,
+    payload: GitCheckoutRequest,
+    db: Session = Depends(get_db),
+):
+    """Checkout (or create) a git branch for a project's workspace."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace_path = resolve_workspace_path(project.workspace_path)
+    if not workspace_path.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (workspace_path / ".git").exists():
+        raise HTTPException(status_code=400, detail="Workspace is not a git repo")
+
+    _validate_branch_name(payload.branch)
+
+    cmd = ["git", "-C", str(workspace_path), "checkout"]
+    if payload.create:
+        cmd.append("-b")
+    cmd.append(payload.branch)
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        current = subprocess.run(
+            ["git", "-C", str(workspace_path), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        return {"success": True, "current": current, "stdout": result.stdout, "stderr": result.stderr}
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"git error: {exc.stderr}")
 
 
 @app.get("/projects/{project_id}/file/{file_path:path}")

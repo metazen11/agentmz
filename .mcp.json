@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://wfhub:wfhub@localhost:5433/agentic"]
+    },
+    "docker": {
+      "command": "npx",
+      "args": ["-y", "@0xshariq/docker-mcp-server"],
+      "env": {
+        "DOCKER_HOST": "unix:///var/run/docker.sock"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/mnt/c/dropbox/_coding/agentic/v2"]
+    }
+  }
+}

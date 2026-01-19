@@ -13,7 +13,7 @@
 | **Purpose** | AI coding agent with tool calling (grep, glob, bash, read, edit) |
 | **Stack** | FastAPI + SQLAlchemy + PostgreSQL + Aider + Ollama |
 | **Database** | PostgreSQL 16 (port 5433) |
-| **Models** | qwen2.5-coder:3b (code), qwen3:4b (general) |
+| **Models** | qwen3:1.7b (code), qwen3:4b (general) |
 | **Container Runtime** | Docker Compose |
 
 ---
@@ -157,8 +157,8 @@ All configuration lives in `.env`. NEVER hardcode values.
 ```bash
 # .env - Single Source of Truth
 OLLAMA_API_BASE=http://localhost:11434
-AIDER_MODEL=ollama_chat/qwen2.5-coder:3b
-AGENT_MODEL=qwen2.5-coder:3b
+AIDER_MODEL=ollama_chat/qwen3:1.7b
+AGENT_MODEL=qwen3:1.7b
 MAX_ITERATIONS=20
 DEFAULT_WORKSPACE=poc
 AIDER_API_PORT=8001
@@ -537,7 +537,7 @@ pytest tests/ -v
 | pytest+requests for JSON APIs | Ad-hoc curl commands |
 | Run from v2/ directory | Running from wrong directory |
 | Document in session_handoff.md | Losing session context |
-| qwen2.5-coder:3b works fast | qwen3:4b times out (5+ min) |
+| qwen3:1.7b works fast | qwen3:4b times out (5+ min) |
 
 ---
 
@@ -563,7 +563,7 @@ alembic stamp head           # Reset migration tracking
 alembic upgrade head         # Apply migrations
 
 # Model not found?
-ollama pull qwen2.5-coder:3b
+ollama pull qwen3:1.7b
 
 # Playwright not working?
 playwright install chromium  # Install browser

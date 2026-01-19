@@ -21,7 +21,7 @@ Context Sources (aggregated by ProjectContext):
 Environment Variables:
   OLLAMA_API_BASE   - Ollama URL (default: http://localhost:11434)
   AIDER_MODEL       - Model for aider edits (default: ollama_chat/qwen3:4b)
-  AGENT_MODEL       - Model for orchestration (default: qwen2.5-coder:3b)
+  AGENT_MODEL       - Model for orchestration (default: qwen3:1.7b)
   MAX_ITERATIONS    - Max agent loop iterations (default: 20)
   WORKSPACES_DIR    - Base path for workspaces
 """
@@ -29,6 +29,8 @@ Environment Variables:
 import fnmatch
 import glob as glob_module
 import json
+import base64
+import uuid
 import os
 import subprocess
 import sys
@@ -76,8 +78,8 @@ class Config:
     def reload(self):
         """Reload config from environment variables."""
         self.ollama_api_base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
-        self.aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen2.5-coder:3b")
-        self.agent_model = os.environ.get("AGENT_MODEL", "qwen2.5-coder:3b")
+        self.aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:1.7b")
+        self.agent_model = os.environ.get("AGENT_MODEL", "qwen3:1.7b")
         self.max_iterations = int(os.environ.get("MAX_ITERATIONS", "20"))
         self.default_workspace = os.environ.get("DEFAULT_WORKSPACE", "poc")
         self.git_user_name = os.environ.get("GIT_USER_NAME", "Aider Agent")
@@ -277,6 +279,17 @@ TOOL_DEFINITIONS = [
 
 
 class AiderAPIHandler(BaseHTTPRequestHandler):
+    def _normalize_path(self, workspace_path: str, path: str) -> str:
+        """Normalize tool paths to stay relative to the workspace root."""
+        if not path:
+            return path
+        cleaned = path.lstrip("/")
+        if cleaned.startswith("./"):
+            cleaned = cleaned[2:]
+        if cleaned.startswith("app/") and not os.path.isdir(os.path.join(workspace_path, "app")):
+            cleaned = cleaned[len("app/"):]
+        return cleaned
+
     def _send_json(self, data, status=200):
         try:
             self.send_response(status)
@@ -345,6 +358,11 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
                     return
 
                 timeout = data.get("timeout")
+                workspace_path = config.resolve_workspace_path(workspace)
+                files = [
+                    self._normalize_path(workspace_path, f) for f in files
+                    if isinstance(f, str) and f.strip()
+                ]
                 result = self._run_aider(workspace, prompt, files, timeout)
                 self._send_json(result)
 
@@ -441,6 +459,10 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
                     "previous_model": previous_agent_model,
                 })
 
+            elif self.path == "/api/vision/describe":
+                result = self._describe_image(data)
+                self._send_json(result)
+
             elif self.path == "/api/context":
                 # Get project context for a workspace
                 result = self._get_context(data)
@@ -514,7 +536,7 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         cmd = [
             "aider",
             "--model", config.aider_model,
-            "--no-auto-commits",
+            "--auto-commits",
             "--yes",  # Auto-confirm
             "--message", prompt,
         ]
@@ -602,6 +624,43 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
             return ""
         except Exception:
             return ""
+
+    def _describe_image(self, data: dict) -> dict:
+        """Describe an image using the configured vision model."""
+        filename = data.get("filename", "image.png")
+        b64_data = data.get("data", "")
+        context = data.get("context", "")
+        compact = bool(data.get("compact", True))
+
+        if not b64_data or not isinstance(b64_data, str):
+            return {"success": False, "error": "image data required"}
+
+        try:
+            raw = base64.b64decode(b64_data)
+        except Exception:
+            return {"success": False, "error": "invalid base64 data"}
+
+        if len(raw) > 5 * 1024 * 1024:
+            return {"success": False, "error": "image too large (max 5MB)"}
+
+        safe_name = os.path.basename(filename) or "image.png"
+        tmp_dir = "/tmp/vision_uploads"
+        os.makedirs(tmp_dir, exist_ok=True)
+        tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}_{safe_name}")
+        try:
+            with open(tmp_path, "wb") as f:
+                f.write(raw)
+            try:
+                from mcp_vision_server import analyze_image
+            except Exception as exc:
+                return {"success": False, "error": f"vision module unavailable: {exc}"}
+            return analyze_image(tmp_path, context=context, compact=compact)
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
 
     def _run_grep(self, data: dict) -> dict:
         """Search file contents using grep/ripgrep.
@@ -858,7 +917,8 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         if not os.path.isdir(workspace_path):
             return {"success": False, "error": f"Workspace not found: {workspace}"}
 
-        file_path = os.path.join(workspace_path, path)
+        normalized_path = self._normalize_path(workspace_path, path)
+        file_path = os.path.join(workspace_path, normalized_path)
 
         # Security: ensure file is within workspace (or project root for [%root%])
         real_workspace = os.path.realpath(workspace_path)
@@ -867,7 +927,7 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
             return {"success": False, "error": "Access denied: path outside workspace"}
 
         if not os.path.isfile(file_path):
-            return {"success": False, "error": f"File not found: {path}"}
+            return {"success": False, "error": f"File not found: {normalized_path}"}
 
         try:
             with open(file_path, "r", encoding="utf-8", errors="replace") as f:
@@ -1001,6 +1061,10 @@ Workflow:
 3. Make necessary changes (use edit for existing files, write for new files)
 4. Verify changes work (use bash to run tests)
 5. Call done(status="PASS", summary="...") when complete
+
+Paths:
+- All tool paths are relative to the workspace root.
+- Do not prefix paths with "app/" unless that directory exists in the workspace.
 
 For simple tasks (create a file, write content), just do it directly.
 For complex tasks (modify existing code, find bugs), explore first to understand the codebase."""
@@ -1383,15 +1447,26 @@ Workspace: {workspace}"""
         elif tool_name == "glob":
             return self._run_glob(args)
         elif tool_name == "read":
+            if "path" in args and isinstance(args["path"], str):
+                workspace_path = config.resolve_workspace_path(workspace)
+                args["path"] = self._normalize_path(workspace_path, args["path"])
             return self._run_read(args)
         elif tool_name == "bash":
             return self._run_bash(args)
         elif tool_name == "write":
+            if "path" in args and isinstance(args["path"], str):
+                workspace_path = config.resolve_workspace_path(workspace)
+                args["path"] = self._normalize_path(workspace_path, args["path"])
             return self._run_write(args)
         elif tool_name == "edit":
             # Use aider for edits
             prompt = args.get("prompt", "")
             files = args.get("files", [])
+            workspace_path = config.resolve_workspace_path(workspace)
+            files = [
+                self._normalize_path(workspace_path, f) for f in files
+                if isinstance(f, str) and f.strip()
+            ]
             return self._run_aider(workspace, prompt, files)
         elif tool_name == "done":
             # Done is handled in the main loop
