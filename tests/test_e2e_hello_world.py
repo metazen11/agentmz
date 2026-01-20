@@ -20,13 +20,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app
 from database import SessionLocal, engine
-from models import Base, Project, Task
+from models import Base, Project, Task, TaskComment, TaskAttachment
 
 
 @pytest.fixture(scope="module")
 def test_workspace():
     """Create a temporary workspace directory for testing."""
     workspace = tempfile.mkdtemp(prefix="agentic_test_")
+    os.environ["WORKSPACES_DIR"] = str(Path(workspace).parent)
     yield workspace
     # Cleanup after tests
     shutil.rmtree(workspace, ignore_errors=True)
@@ -39,13 +40,17 @@ def client():
 
 
 @pytest.fixture(scope="module", autouse=True)
-def setup_database():
+def setup_database(db_cleanup_allowed):
     """Ensure database tables exist."""
+    if not db_cleanup_allowed:
+        pytest.skip("DB cleanup disabled; set ALLOW_DB_CLEANUP=1 or use a test database.")
     Base.metadata.create_all(bind=engine)
     yield
     # Optional: clean up test data after module
     db = SessionLocal()
     try:
+        db.query(TaskAttachment).delete()
+        db.query(TaskComment).delete()
         db.query(Task).delete()
         db.query(Project).delete()
         db.commit()

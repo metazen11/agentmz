@@ -81,10 +81,16 @@ class Config:
         self.aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:1.7b")
         self.agent_model = os.environ.get("AGENT_MODEL", "qwen3:1.7b")
         self.vision_model = os.environ.get("VISION_MODEL", "")
+        self.vision_model_regex = os.environ.get(
+            "VISION_MODEL_REGEX",
+            r"(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\\.5vl|qwen2-vl|qwen-vl|clip)",
+        )
         vision_models_raw = os.environ.get("VISION_MODELS", "")
         self.vision_models = [
             model.strip() for model in vision_models_raw.split(",") if model.strip()
         ]
+        self.vision_image_max_size = self._parse_int_env("VISION_IMAGE_MAX_SIZE", 640)
+        self.vision_max_tokens = self._parse_int_env("VISION_MAX_TOKENS", 120)
         self.max_iterations = int(os.environ.get("MAX_ITERATIONS", "20"))
         self.default_workspace = os.environ.get("DEFAULT_WORKSPACE", "poc")
         self.git_user_name = os.environ.get("GIT_USER_NAME", "Aider Agent")
@@ -112,11 +118,24 @@ class Config:
             "agent_model": self.agent_model,
             "vision_model": self.vision_model,
             "vision_models": self.vision_models,
+            "vision_model_regex": self.vision_model_regex,
+            "vision_image_max_size": self.vision_image_max_size,
+            "vision_max_tokens": self.vision_max_tokens,
             "max_iterations": self.max_iterations,
             "default_workspace": self.default_workspace,
             "current_workspace": self.current_workspace,
             "workspaces_dir": self.workspaces_dir,
         }
+
+    def _parse_int_env(self, key: str, default: int) -> int:
+        raw = os.environ.get(key)
+        if raw is None:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            return default
+        return value
 
     def list_workspaces(self):
         """List available workspaces."""
@@ -646,8 +665,17 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         if requested_model is not None and not isinstance(requested_model, str):
             return {"success": False, "error": "vision model must be a string"}
 
-        if requested_model and config.vision_models and requested_model not in config.vision_models:
-            return {"success": False, "error": f"vision model not allowed: {requested_model}"}
+        if requested_model:
+            if config.vision_models:
+                if requested_model not in config.vision_models:
+                    return {"success": False, "error": f"vision model not allowed: {requested_model}"}
+            else:
+                try:
+                    import re
+                    if not re.search(config.vision_model_regex, requested_model, re.IGNORECASE):
+                        return {"success": False, "error": f"vision model not allowed: {requested_model}"}
+                except re.error:
+                    return {"success": False, "error": "vision model regex invalid"}
 
         try:
             raw = base64.b64decode(b64_data)

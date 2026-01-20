@@ -66,3 +66,48 @@ button.secondary:hover { background: #777; }
   padding: 6px 10px;
   font-size: 12px;
 }
+
+.has-tooltip {
+  position: relative;
+}
+.tooltip {
+  position: absolute;
+  left: 8px;
+  top: calc(100% + 8px);
+  background: #111;
+  color: #e5e5e5;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  font-size: 11px;
+  line-height: 1.4;
+  display: none;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  z-index: 20;
+  min-width: 220px;
+  max-width: 320px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  gap: 6px;
+}
+.tooltip-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+}
+.tooltip-label {
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+.tooltip-value {
+  color: #f3f4f6;
+  word-break: break-word;
+}
+.has-tooltip:hover .tooltip {
+  display: grid;
+  opacity: 1;
+  transform: translateY(0);
+}

@@ -85,7 +85,8 @@ def _looks_like_ollama_url(url: str) -> bool:
 VISION_MODEL = os.getenv("VISION_MODEL")
 if not VISION_MODEL:
     VISION_MODEL = "qwen2.5vl:7b" if _looks_like_ollama_url(VISION_API_URL) else "ai/qwen3-vl"
-VISION_TIMEOUT = int(os.getenv("VISION_TIMEOUT", "120"))
+VISION_TIMEOUT = int(os.getenv("VISION_TIMEOUT", "20"))
+VISION_MAX_TOKENS = int(os.getenv("VISION_MAX_TOKENS", "120"))
 
 # Cache directory
 CACHE_DIR = os.path.join(
@@ -232,6 +233,9 @@ def analyze_image(
         prompt_parts.append("Describe the layout, UI elements, and any notable details.")
         prompt = " ".join(prompt_parts)
         max_tokens = 2000
+
+    if VISION_MAX_TOKENS > 0:
+        max_tokens = min(max_tokens, VISION_MAX_TOKENS)
 
     # Build API request
     selected_model = model or VISION_MODEL

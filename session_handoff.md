@@ -711,6 +711,58 @@ time curl -s http://localhost:11435/api/generate -d '{"model":"qwen-coder-optimi
 
 ---
 
+## Implementation Status (2026-01-19 - Session 15)
+
+### Completed
+- [x] Added task comments and attachments models with CRUD + upload/download endpoints
+- [x] Added uploads configuration (`UPLOADS_DIR`, `ATTACHMENT_MAX_BYTES`) and `python-multipart` dependency
+- [x] Added Alembic migration for `task_comments` and `task_attachments`
+- [x] Added tests covering comment/attachment create/update/list/upload/download/delete
+
+### Notes
+- Installed `python-multipart` locally to enable form uploads.
+- Added env loading helper and workspace root resolution; reran `pytest tests/test_task_comments_attachments.py -v` (passed).
+- Updated Alembic to use the shared database URL logic; `alembic current` now works without port overrides.
+- Added test DB cleanup guard; destructive cleanup now requires `ALLOW_DB_CLEANUP=1` or a *_test database.
+
+---
+
+## Implementation Status (2026-01-19 - Session 16)
+
+### Completed
+- [x] Surfaced project details in the sidebar (id, name, workspace, environment, created_at)
+- [x] Expanded task editor with metadata, comments, and attachments sections (full field coverage)
+- [x] Added comment CRUD and attachment upload/delete integration in the UI
+
+### Notes
+- Tests not run after UI changes.
+
+---
+
+## Implementation Status (2026-01-19 - Session 17)
+
+### Completed
+- [x] Moved project/task metadata into hover tooltips in the list views
+- [x] Expanded new-task modal to include parent_id, status, and stage
+- [x] Removed static project/task detail panels to reduce clutter
+
+### Notes
+- Tests not run after UI changes.
+
+---
+
+## Implementation Status (2026-01-19 - Session 18)
+
+### Completed
+- [x] Added structured hover tooltips for project/task metadata
+- [x] New-task modal now captures parent_id, status, and stage
+- [x] Image submission now switches to the vision model, builds JSON image context, and restores the primary model
+
+### Notes
+- Tests not run after UI changes.
+
+---
+
 ## Principles (from coding_principles.md)
 
 - **TDD**: Write tests first
@@ -718,3 +770,16 @@ time curl -s http://localhost:11435/api/generate -d '{"model":"qwen-coder-optimi
 - **Stay Focused**: One task at a time
 - **Graceful Failure**: Try/except with structured errors
 - **Structured JSON**: `{"success": true, ...}` format
+
+---
+
+## Implementation Status (2026-01-20 - Session 19)
+
+### Completed
+- [x] Added task acceptance criteria model, endpoints, and migration
+- [x] Added task context endpoint (acceptance, attachments, recent comments, git info, MCP hints)
+- [x] Updated task modal to show parent link, add subtasks, and manage acceptance criteria
+- [x] Prompt now prepends TASK_CONTEXT JSON; agent runs auto-append a git summary comment
+
+### Notes
+- Tests not run after these changes.

@@ -20,17 +20,21 @@
   <div class="main-layout">
     <!-- Sidebar: Projects and Tasks -->
     <div class="sidebar">
-      <h3>Projects</h3>
+      <div class="sidebar-section-header">
+        <h3>Projects</h3>
+        <button class="btn-small" onclick="showNewProjectModal()">+ New Project</button>
+      </div>
       <ul class="project-list" id="project-list">
         <li>Loading...</li>
       </ul>
-      <button class="btn-small" onclick="showNewProjectModal()">+ New Project</button>
 
-      <h3 style="margin-top: 20px;">Tasks</h3>
+      <div class="sidebar-section-header spaced">
+        <h3>Tasks</h3>
+        <button class="btn-small" onclick="showNewTaskModal()">+ New Task</button>
+      </div>
       <ul class="task-list" id="task-list">
         <li style="color: #666;">Select a project</li>
       </ul>
-      <button class="btn-small" onclick="showNewTaskModal()">+ New Task</button>
 
       <div class="file-tree" id="file-tree">
         <div class="file-tree-header">
@@ -140,6 +144,24 @@
     <h3>New Task</h3>
     <input type="text" id="new-task-title" placeholder="Task title">
     <textarea id="new-task-desc" placeholder="Description (optional)"></textarea>
+    <label style="font-size:12px; color:#aaa; margin-top:8px;">Parent Task (optional)</label>
+    <select id="new-task-parent-id">
+      <option value="">No parent</option>
+    </select>
+    <label style="font-size:12px; color:#aaa; margin-top:8px;">Stage</label>
+    <select id="new-task-stage">
+      <option value="dev">dev</option>
+      <option value="qa">qa</option>
+      <option value="review">review</option>
+      <option value="complete">complete</option>
+    </select>
+    <label style="font-size:12px; color:#aaa; margin-top:8px;">Status</label>
+    <select id="new-task-status">
+      <option value="backlog">backlog</option>
+      <option value="in_progress">in_progress</option>
+      <option value="done">done</option>
+      <option value="failed">failed</option>
+    </select>
     <div class="modal-actions">
       <button onclick="createTask()">Create</button>
       <button class="secondary" onclick="hideModals()">Cancel</button>
@@ -149,10 +171,14 @@
 
 <!-- Edit Task Modal -->
 <div id="edit-task-modal" class="modal" style="display:none;">
-  <div class="modal-content">
+  <div class="modal-content task-modal-content">
     <h3>Edit Task</h3>
     <input type="text" id="edit-task-title" placeholder="Task title">
     <textarea id="edit-task-desc" placeholder="Description (optional)"></textarea>
+    <div id="edit-task-parent-row" class="task-parent-row" style="display:none;">
+      Parent: <a href="#" id="edit-task-parent-link"></a>
+    </div>
+    <button class="btn-small" onclick="createSubtask(getEditingTaskId())">+ Add Subtask</button>
     <label style="font-size:12px; color:#aaa; margin-top:8px;">Stage</label>
     <select id="edit-task-stage">
       <option value="dev">dev</option>
@@ -167,6 +193,42 @@
       <option value="done">done</option>
       <option value="failed">failed</option>
     </select>
+
+    <div class="details-panel">
+      <div class="details-title">Acceptance Criteria</div>
+      <div id="task-criteria-list" class="criteria-list">No criteria</div>
+      <input type="text" id="criteria-desc" placeholder="Add acceptance criteria">
+      <input type="text" id="criteria-author" placeholder="Author (optional)">
+      <div class="comment-actions">
+        <button onclick="addAcceptanceCriteria()">Add Criteria</button>
+      </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title">Comments</div>
+      <div id="task-comments-list" class="comment-list">No comments</div>
+      <input type="text" id="comment-author" placeholder="Author (optional)">
+      <textarea id="comment-body" placeholder="Add a comment"></textarea>
+      <input type="hidden" id="comment-id">
+      <div class="comment-actions">
+        <button onclick="saveTaskComment()">Save Comment</button>
+        <button class="secondary" onclick="resetCommentForm()">Cancel</button>
+      </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title">Attachments</div>
+      <div id="task-attachments-list" class="attachment-list">No attachments</div>
+      <input type="file" id="attachment-file">
+      <input type="text" id="attachment-uploaded-by" placeholder="Uploaded by (optional)">
+      <select id="attachment-comment-id">
+        <option value="">Attach to task</option>
+      </select>
+      <div class="comment-actions">
+        <button onclick="uploadTaskAttachment()">Upload</button>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button onclick="updateTask()">Save</button>
       <button class="delete" onclick="deleteTask(getEditingTaskId())">Delete</button>
@@ -286,6 +348,20 @@ const restartMainEl = document.getElementById('restart-main');
 const restartAiderEl = document.getElementById('restart-aider');
 const restartOllamaEl = document.getElementById('restart-ollama');
 const restartDbEl = document.getElementById('restart-db');
+const taskCommentsListEl = document.getElementById('task-comments-list');
+const commentAuthorEl = document.getElementById('comment-author');
+const commentBodyEl = document.getElementById('comment-body');
+const commentIdEl = document.getElementById('comment-id');
+const taskAttachmentsListEl = document.getElementById('task-attachments-list');
+const attachmentFileEl = document.getElementById('attachment-file');
+const attachmentUploadedByEl = document.getElementById('attachment-uploaded-by');
+const attachmentCommentIdEl = document.getElementById('attachment-comment-id');
+const newTaskParentSelectEl = document.getElementById('new-task-parent-id');
+const editTaskParentRowEl = document.getElementById('edit-task-parent-row');
+const editTaskParentLinkEl = document.getElementById('edit-task-parent-link');
+const criteriaListEl = document.getElementById('task-criteria-list');
+const criteriaDescEl = document.getElementById('criteria-desc');
+const criteriaAuthorEl = document.getElementById('criteria-author');
 
 // ============================================================================
 // Local state aliases (getter shortcuts to state module)
@@ -302,6 +378,77 @@ const getEnvEntries = () => state.envEntries;
 const getEditingProjectId = () => state.editingProjectId;
 const getEditingTaskId = () => state.editingTaskId;
 const getCurrentLogTab = () => state.currentLogTab;
+
+let taskComments = [];
+let taskAttachments = [];
+let editingCommentId = null;
+let visionImageMaxSize = 640;
+let visionModelRegex = null;
+let pendingParentTaskId = null;
+let taskCriteria = [];
+
+function formatDate(value) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderTooltip(rows) {
+  const items = rows.filter(Boolean).map(row => `
+    <div class="tooltip-row">
+      <span class="tooltip-label">${escapeHtml(row.label)}</span>
+      <span class="tooltip-value">${escapeHtml(row.value)}</span>
+    </div>
+  `).join('');
+  return `<div class="tooltip">${items}</div>`;
+}
+
+function flattenTasks(taskList, depth = 0, out = []) {
+  taskList.forEach(task => {
+    out.push({ id: task.id, title: task.title || `Task ${task.id}`, depth });
+    if (Array.isArray(task.children) && task.children.length > 0) {
+      flattenTasks(task.children, depth + 1, out);
+    }
+  });
+  return out;
+}
+
+function populateParentTaskOptions(selectedId = null) {
+  if (!newTaskParentSelectEl) return;
+  const tasks = flattenTasks(state.tasks);
+  const options = ['<option value="">No parent</option>'];
+  tasks.forEach(task => {
+    const prefix = task.depth > 0 ? `${'-'.repeat(task.depth * 2)} ` : '';
+    options.push(`<option value="${task.id}">${prefix}#${task.id} ${escapeHtml(task.title)}</option>`);
+  });
+  newTaskParentSelectEl.innerHTML = options.join('');
+  if (selectedId) {
+    newTaskParentSelectEl.value = String(selectedId);
+  }
+}
+
+function isLikelyVisionModel(model) {
+  if (!model) return false;
+  if (visionModelRegex) {
+    try {
+      const regex = new RegExp(visionModelRegex, 'i');
+      return regex.test(model);
+    } catch (err) {
+      return false;
+    }
+  }
+  return /(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\\.5vl|qwen2-vl|qwen-vl|clip)/i.test(model);
+}
 
 async function restoreSelectionsFromCookies() {
   // Restore project selection
@@ -424,6 +571,8 @@ async function loadModels() {
       visionAllowlist = Array.isArray(configData.config?.vision_models)
         ? configData.config.vision_models
         : [];
+      visionImageMaxSize = parseInt(configData.config?.vision_image_max_size, 10) || visionImageMaxSize;
+      visionModelRegex = configData.config?.vision_model_regex || visionModelRegex;
     }
 
     if (!models.length) {
@@ -436,6 +585,9 @@ async function loadModels() {
       return;
     }
 
+    if (currentAgentModel && models.includes(currentAgentModel)) {
+      models = [currentAgentModel, ...models.filter(model => model !== currentAgentModel)];
+    }
     setAvailableModels(models);
     modelSelectEl.innerHTML = models.map(model => (
       `<option value="${model}">${model}</option>`
@@ -450,7 +602,7 @@ async function loadModels() {
     if (visionModelSelectEl) {
       const visionModels = visionAllowlist.length
         ? models.filter(model => visionAllowlist.includes(model))
-        : models.slice();
+        : models.filter(model => isLikelyVisionModel(model));
 
       if (!visionModels.length) {
         visionModelSelectEl.innerHTML = '<option value="">No vision models found</option>';
@@ -602,15 +754,21 @@ function renderProjects() {
     return;
   }
   projectListEl.innerHTML = state.projects.map(p => `
-    <li class="${state.selectedProject?.id === p.id ? 'selected' : ''}"
+    <li class="${state.selectedProject?.id === p.id ? 'selected' : ''} has-tooltip"
         onclick="selectProject(${p.id})">
       <div class="project-row">
-        <span class="project-title">${p.name}</span>
+        <span class="project-title">${escapeHtml(p.name || 'Untitled project')}</span>
         <div class="project-actions">
           <button onclick="event.stopPropagation(); showEditProjectModal(${p.id})">Edit</button>
           <button class="delete" onclick="event.stopPropagation(); deleteProject(${p.id})">Delete</button>
         </div>
       </div>
+      ${renderTooltip([
+        { label: 'ID', value: p.id ?? '-' },
+        { label: 'Workspace', value: p.workspace_path || '-' },
+        { label: 'Environment', value: p.environment || '-' },
+        { label: 'Created', value: formatDate(p.created_at) }
+      ])}
     </li>
   `).join('');
 }
@@ -661,6 +819,7 @@ async function loadTasks(projectId) {
     const taskList = await res.json();
     setTasks(taskList);
     renderTasks();
+    populateParentTaskOptions();
   } catch (err) {
     taskListEl.innerHTML = '<li style="color: #ff6b6b;">Failed to load</li>';
   }
@@ -675,14 +834,21 @@ function renderTasks() {
     const title = t.title || 'Untitled task';
     const stage = t.stage || 'dev';
     const status = t.status || 'backlog';
+    const tooltipRows = [
+      { label: 'ID', value: t.id ?? '-' },
+      { label: 'Project', value: t.project_id ?? '-' },
+      t.parent_id ? { label: 'Parent', value: `#${t.parent_id}` } : null,
+      { label: 'Status', value: status },
+      { label: 'Stage', value: stage },
+      { label: 'Created', value: formatDate(t.created_at) }
+    ];
     return `
-    <li class="${state.selectedTask?.id === t.id ? 'selected' : ''}"
+    <li class="${state.selectedTask?.id === t.id ? 'selected' : ''} has-tooltip"
         onclick="openTaskEditor(${t.id})">
       <div class="task-row">
-        <span class="task-title" title="${title}">${title}</span>
-        <span class="task-stage ${stage}">${stage}</span>
-        <span class="task-status ${status}">${status}</span>
+        <span class="task-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
       </div>
+      ${renderTooltip(tooltipRows)}
     </li>
   `;
   }).join('');
@@ -1166,9 +1332,14 @@ function clearImages() {
 async function describeImages(images) {
   const results = [];
   for (const img of images) {
-    const base64 = await getResizedImageBase64(img.dataUrl || '', 1024);
+    const base64 = await getResizedImageBase64(img.dataUrl || '', visionImageMaxSize);
     if (!base64) {
-      results.push(`[Image: ${img.name}]\nDescription unavailable (invalid data).`);
+      results.push({
+        name: img.name,
+        location: img.name,
+        description: null,
+        error: 'invalid data'
+      });
       continue;
     }
     try {
@@ -1187,12 +1358,27 @@ async function describeImages(images) {
       });
       const data = await res.json();
       if (res.ok && data.success && data.description) {
-        results.push(`[Image: ${img.name}]\n${data.description}`);
+        results.push({
+          name: img.name,
+          location: img.name,
+          description: data.description,
+          error: null
+        });
       } else {
-        results.push(`[Image: ${img.name}]\nDescription unavailable (${data.error || 'vision model not configured'}).`);
+        results.push({
+          name: img.name,
+          location: img.name,
+          description: null,
+          error: data.error || 'vision model not configured'
+        });
       }
     } catch (err) {
-      results.push(`[Image: ${img.name}]\nDescription unavailable (${err.message}).`);
+      results.push({
+        name: img.name,
+        location: img.name,
+        description: null,
+        error: err.message
+      });
     }
   }
   return results;
@@ -1394,7 +1580,17 @@ function showNewTaskModal() {
     alert('Select a project first');
     return;
   }
+  document.getElementById('new-task-status').value = 'backlog';
+  document.getElementById('new-task-stage').value = 'dev';
+  populateParentTaskOptions(pendingParentTaskId);
+  pendingParentTaskId = null;
   document.getElementById('new-task-modal').style.display = 'flex';
+}
+
+function createSubtask(parentTaskId) {
+  if (!parentTaskId) return;
+  pendingParentTaskId = parentTaskId;
+  showNewTaskModal();
 }
 
 function hideModals() {
@@ -1524,19 +1720,36 @@ async function deleteProject(projectId) {
 async function createTask() {
   const title = document.getElementById('new-task-title').value.trim();
   const description = document.getElementById('new-task-desc').value.trim();
+  const parentRaw = newTaskParentSelectEl ? newTaskParentSelectEl.value : '';
+  const status = document.getElementById('new-task-status').value;
+  const stage = document.getElementById('new-task-stage').value;
   if (!title) return;
+
+  let parentId = null;
+  if (parentRaw) {
+    parentId = parseInt(parentRaw, 10);
+    if (Number.isNaN(parentId)) parentId = null;
+  }
 
   try {
     const res = await fetch(`${MAIN_API}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: state.selectedProject.id, title, description })
+      body: JSON.stringify({
+        project_id: state.selectedProject.id,
+        parent_id: parentId,
+        title,
+        description,
+        status,
+        stage
+      })
     });
     await res.json();
     await loadTasks(state.selectedProject.id);
     hideModals();
     document.getElementById('new-task-title').value = '';
     document.getElementById('new-task-desc').value = '';
+    if (newTaskParentSelectEl) newTaskParentSelectEl.value = '';
   } catch (err) {
     alert('Failed to create task: ' + err.message);
   }
@@ -1553,7 +1766,31 @@ function showEditTaskModal(taskId) {
   document.getElementById('edit-task-desc').value = task.description || '';
   document.getElementById('edit-task-status').value = task.status || 'backlog';
   document.getElementById('edit-task-stage').value = task.stage || 'dev';
+  if (task.parent_id) {
+    const parent = findTaskById(task.parent_id);
+    if (editTaskParentRowEl && editTaskParentLinkEl) {
+      editTaskParentRowEl.style.display = 'block';
+      const label = parent
+        ? `#${parent.id} ${parent.title || 'Untitled task'}`
+        : `#${task.parent_id}`;
+      editTaskParentLinkEl.textContent = label;
+      editTaskParentLinkEl.onclick = (event) => {
+        event.preventDefault();
+        openTaskEditor(task.parent_id);
+      };
+    }
+  } else if (editTaskParentRowEl) {
+    editTaskParentRowEl.style.display = 'none';
+    if (editTaskParentLinkEl) {
+      editTaskParentLinkEl.textContent = '';
+      editTaskParentLinkEl.onclick = null;
+    }
+  }
   document.getElementById('edit-task-modal').style.display = 'flex';
+  resetCommentForm();
+  loadTaskAcceptanceCriteria(taskId);
+  loadTaskComments(taskId);
+  loadTaskAttachments(taskId);
 }
 
 async function updateTask() {
@@ -1609,6 +1846,416 @@ async function deleteTask(taskId) {
   }
 }
 
+async function loadTaskAcceptanceCriteria(taskId) {
+  if (!criteriaListEl) return;
+  criteriaListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/acceptance`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    taskCriteria = await res.json();
+    renderAcceptanceCriteria();
+  } catch (err) {
+    criteriaListEl.textContent = `Failed to load criteria: ${err.message}`;
+  }
+}
+
+function renderAcceptanceCriteria() {
+  if (!criteriaListEl) return;
+  if (!taskCriteria.length) {
+    criteriaListEl.textContent = 'No criteria';
+    return;
+  }
+  criteriaListEl.innerHTML = taskCriteria.map(criteria => `
+    <div class="criteria-item">
+      <label class="criteria-main">
+        <input type="checkbox" ${criteria.passed ? 'checked' : ''} onchange="toggleAcceptanceCriteria(${criteria.id}, this.checked)">
+        <span class="criteria-desc">${escapeHtml(criteria.description)}</span>
+      </label>
+      <div class="criteria-meta">By ${escapeHtml(criteria.author)} | ${formatDate(criteria.updated_at)}</div>
+      <div class="criteria-actions">
+        <button class="delete" onclick="deleteAcceptanceCriteria(${criteria.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function addAcceptanceCriteria() {
+  if (!state.selectedTask) {
+    alert('Select a task first');
+    return;
+  }
+  const description = criteriaDescEl?.value.trim() || '';
+  const author = criteriaAuthorEl?.value.trim() || '';
+  if (!description) {
+    alert('Criteria description is required');
+    return;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/acceptance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description,
+        author: author || null
+      })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    await res.json();
+    if (criteriaDescEl) criteriaDescEl.value = '';
+    if (criteriaAuthorEl) criteriaAuthorEl.value = '';
+    await loadTaskAcceptanceCriteria(state.selectedTask.id);
+  } catch (err) {
+    alert('Failed to add criteria: ' + err.message);
+  }
+}
+
+async function toggleAcceptanceCriteria(criteriaId, passed) {
+  if (!state.selectedTask) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/acceptance/${criteriaId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    await res.json();
+    await loadTaskAcceptanceCriteria(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to update criteria: ${err.message}`);
+  }
+}
+
+async function deleteAcceptanceCriteria(criteriaId) {
+  if (!state.selectedTask) return;
+  if (!confirm('Delete this criteria?')) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/acceptance/${criteriaId}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    await res.json();
+    await loadTaskAcceptanceCriteria(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to delete criteria: ${err.message}`);
+  }
+}
+
+async function loadTaskComments(taskId) {
+  if (!taskCommentsListEl) return;
+  taskCommentsListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/comments`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    taskComments = await res.json();
+    renderTaskComments();
+    updateAttachmentCommentOptions();
+  } catch (err) {
+    taskCommentsListEl.textContent = `Failed to load comments: ${err.message}`;
+  }
+}
+
+function renderTaskComments() {
+  if (!taskCommentsListEl) return;
+  if (!taskComments.length) {
+    taskCommentsListEl.textContent = 'No comments';
+    return;
+  }
+  taskCommentsListEl.innerHTML = taskComments.map(comment => `
+    <div class="comment-item">
+      <div class="comment-meta">
+        <div>ID: ${escapeHtml(comment.id)} | Task: ${escapeHtml(comment.task_id)}</div>
+        <div>Author: ${escapeHtml(comment.author || 'human')}</div>
+        <div>Created: ${escapeHtml(formatDate(comment.created_at))} | Updated: ${escapeHtml(formatDate(comment.updated_at))}</div>
+      </div>
+      <div>${escapeHtml(comment.body || '')}</div>
+      <div class="comment-actions">
+        <button onclick="startEditComment(${comment.id})">Edit</button>
+        <button class="delete" onclick="deleteTaskComment(${comment.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateAttachmentCommentOptions() {
+  if (!attachmentCommentIdEl) return;
+  const current = attachmentCommentIdEl.value;
+  const options = ['<option value="">Attach to task</option>'];
+  taskComments.forEach(comment => {
+    const preview = escapeHtml((comment.body || '').slice(0, 40));
+    options.push(`<option value="${comment.id}">Comment #${comment.id} - ${preview}</option>`);
+  });
+  attachmentCommentIdEl.innerHTML = options.join('');
+  if (current && [...attachmentCommentIdEl.options].some(opt => opt.value === current)) {
+    attachmentCommentIdEl.value = current;
+  }
+}
+
+function startEditComment(commentId) {
+  const comment = taskComments.find(item => item.id === commentId);
+  if (!comment) return;
+  editingCommentId = commentId;
+  if (commentIdEl) commentIdEl.value = String(commentId);
+  if (commentAuthorEl) commentAuthorEl.value = comment.author || '';
+  if (commentBodyEl) commentBodyEl.value = comment.body || '';
+}
+
+function resetCommentForm() {
+  editingCommentId = null;
+  if (commentIdEl) commentIdEl.value = '';
+  if (commentAuthorEl) commentAuthorEl.value = '';
+  if (commentBodyEl) commentBodyEl.value = '';
+}
+
+async function saveTaskComment() {
+  if (!state.selectedTask) {
+    alert('Select a task first');
+    return;
+  }
+  const author = (commentAuthorEl?.value || '').trim();
+  const body = (commentBodyEl?.value || '').trim();
+  if (!body) {
+    alert('Comment body is required');
+    return;
+  }
+  const payload = { body };
+  if (author) payload.author = author;
+
+  const taskId = state.selectedTask.id;
+  const url = editingCommentId
+    ? `${MAIN_API}/tasks/${taskId}/comments/${editingCommentId}`
+    : `${MAIN_API}/tasks/${taskId}/comments`;
+  const method = editingCommentId ? 'PATCH' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    resetCommentForm();
+    await loadTaskComments(taskId);
+  } catch (err) {
+    alert(`Failed to save comment: ${err.message}`);
+  }
+}
+
+async function deleteTaskComment(commentId) {
+  if (!state.selectedTask) return;
+  if (!confirm('Delete this comment?')) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/comments/${commentId}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    if (editingCommentId === commentId) resetCommentForm();
+    await loadTaskComments(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to delete comment: ${err.message}`);
+  }
+}
+
+async function loadTaskAttachments(taskId) {
+  if (!taskAttachmentsListEl) return;
+  taskAttachmentsListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/attachments`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    taskAttachments = await res.json();
+    renderTaskAttachments();
+  } catch (err) {
+    taskAttachmentsListEl.textContent = `Failed to load attachments: ${err.message}`;
+  }
+}
+
+function renderTaskAttachments() {
+  if (!taskAttachmentsListEl) return;
+  if (!taskAttachments.length) {
+    taskAttachmentsListEl.textContent = 'No attachments';
+    return;
+  }
+  taskAttachmentsListEl.innerHTML = taskAttachments.map(attachment => `
+    <div class="attachment-item">
+      <div class="attachment-row">
+        <a class="attachment-link" href="${MAIN_API}${attachment.url}" target="_blank">${escapeHtml(attachment.filename)}</a>
+        <div class="attachment-meta">ID: ${escapeHtml(attachment.id)} | Task: ${escapeHtml(attachment.task_id)} | Comment: ${escapeHtml(attachment.comment_id ?? '-')}</div>
+        <div class="attachment-meta">Type: ${escapeHtml(attachment.mime_type)} | Size: ${escapeHtml(attachment.size_bytes)} bytes</div>
+        <div class="attachment-meta">Storage: ${escapeHtml(attachment.storage_path)}</div>
+        <div class="attachment-meta">URL: ${escapeHtml(attachment.url)}</div>
+        <div class="attachment-meta">Uploaded by: ${escapeHtml(attachment.uploaded_by)} | Created: ${escapeHtml(formatDate(attachment.created_at))}</div>
+      </div>
+      <div class="attachment-actions">
+        <button class="delete" onclick="deleteTaskAttachment(${attachment.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function uploadTaskAttachment() {
+  if (!state.selectedTask) {
+    alert('Select a task first');
+    return;
+  }
+  const file = attachmentFileEl?.files?.[0];
+  if (!file) {
+    alert('Select a file to upload');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  if (attachmentUploadedByEl?.value) {
+    formData.append('uploaded_by', attachmentUploadedByEl.value.trim());
+  }
+  if (attachmentCommentIdEl?.value) {
+    formData.append('comment_id', attachmentCommentIdEl.value);
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/attachments`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    if (attachmentFileEl) attachmentFileEl.value = '';
+    if (attachmentUploadedByEl) attachmentUploadedByEl.value = '';
+    if (attachmentCommentIdEl) attachmentCommentIdEl.value = '';
+    await loadTaskAttachments(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to upload attachment: ${err.message}`);
+  }
+}
+
+async function deleteTaskAttachment(attachmentId) {
+  if (!state.selectedTask) return;
+  if (!confirm('Delete this attachment?')) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/attachments/${attachmentId}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    await loadTaskAttachments(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to delete attachment: ${err.message}`);
+  }
+}
+
+async function switchAgentModel(model, label) {
+  const res = await fetch(`${AIDER_API}/api/model/switch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, timeout: 120 })
+  });
+  const data = await res.json();
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  addMessage('system', `${label} model loaded: ${data.loaded_model || model}`);
+  return data;
+}
+
+function buildImageContextLayer(descriptions) {
+  const context = {};
+  descriptions.forEach((entry, index) => {
+    const key = entry.name || `image_${index + 1}`;
+    const description = entry.description
+      ? entry.description
+      : `Description unavailable (${entry.error || 'unknown'})`;
+    context[key] = {
+      location: entry.location || entry.name || key,
+      description
+    };
+  });
+  return `IMAGE_CONTEXT:\n${JSON.stringify(context, null, 2)}`;
+}
+
+async function fetchTaskContext(taskId) {
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/context`);
+    if (!res.ok) {
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('Failed to load task context:', err.message);
+    return null;
+  }
+}
+
+function buildTaskContextLayer(context) {
+  if (!context) return '';
+  return `TASK_CONTEXT:\n${JSON.stringify(context, null, 2)}`;
+}
+
+async function postAgentComment(taskId, stage) {
+  const context = await fetchTaskContext(taskId);
+  if (!context) return;
+  const gitInfo = context.git || {};
+  const summary = gitInfo.last_commit_summary;
+  const files = Array.isArray(gitInfo.last_commit_files) ? gitInfo.last_commit_files : [];
+  const working = Array.isArray(gitInfo.working_changes) ? gitInfo.working_changes : [];
+
+  const lines = [`Agent run (${stage})`];
+  if (summary) lines.push(`Last commit: ${summary}`);
+  if (files.length) lines.push(`Last commit files: ${files.join(', ')}`);
+  if (working.length) {
+    const workingList = working.map(item => `${item.status} ${item.path}`).join(', ');
+    lines.push(`Working changes: ${workingList}`);
+  }
+  const body = lines.join('\n');
+
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        author: `agent.${stage}`,
+        body
+      })
+    });
+    if (!res.ok) {
+      return;
+    }
+    if (state.selectedTask?.id === taskId) {
+      await loadTaskComments(taskId);
+    }
+  } catch (err) {
+    console.warn('Failed to post agent comment:', err.message);
+  }
+}
+
 // Chat functions
 async function sendMessage() {
   if (state.isModelSwitching) {
@@ -1628,18 +2275,49 @@ async function sendMessage() {
     : 'poc';
 
   try {
-    // Build prompt with task context if selected
-    let fullPrompt = text;
+    const promptSections = [];
     if (state.selectedTask) {
-      fullPrompt = `Task: ${state.selectedTask.title}\n${state.selectedTask.description || ''}\n\nRequest: ${text}`;
+      const taskContext = await fetchTaskContext(state.selectedTask.id);
+      const taskLayer = buildTaskContextLayer(taskContext);
+      if (taskLayer) {
+        promptSections.push(taskLayer);
+      }
     }
 
     if (state.attachedImages.length > 0) {
+      const activeModel = modelSelectEl.value || '';
+      const visionModel = state.visionModel || '';
+      let switched = false;
+      if (visionModel && activeModel && visionModel !== activeModel) {
+        statusEl.textContent = `Loading vision model: ${visionModel}...`;
+        statusEl.className = 'status connected';
+        try {
+          await switchAgentModel(visionModel, 'Vision');
+          switched = true;
+        } catch (err) {
+          addMessage('error', `Vision model switch failed: ${err.message}`);
+        }
+      }
+
       const imageDescriptions = await describeImages(state.attachedImages);
       if (imageDescriptions.length > 0) {
-        fullPrompt = `${fullPrompt}\n\n${imageDescriptions.join('\n\n')}`;
+        const imageLayer = buildImageContextLayer(imageDescriptions);
+        promptSections.push(imageLayer);
+      }
+
+      if (switched && activeModel) {
+        statusEl.textContent = `Restoring model: ${activeModel}...`;
+        statusEl.className = 'status connected';
+        try {
+          await switchAgentModel(activeModel, 'Primary');
+        } catch (err) {
+          addMessage('error', `Failed to restore model: ${err.message}`);
+        }
       }
     }
+
+    promptSections.push(`REQUEST:\n${text}`);
+    const fullPrompt = promptSections.join('\n\n');
 
     const res = await fetch(`${AIDER_API}/api/agent/run`, {
       method: 'POST',
@@ -1662,6 +2340,10 @@ async function sendMessage() {
       statusEl.className = 'status connected';
       // Refresh file tree after agent completes
       if (state.selectedProject) loadFileTree(state.selectedProject.id);
+      if (state.selectedTask) {
+        const stage = state.selectedTask.stage || 'dev';
+        await postAgentComment(state.selectedTask.id, stage);
+      }
     } else {
       addMessage('error', `Error: ${data.error || data.summary || 'Unknown error'}`);
       statusEl.textContent = 'Error - see output';
@@ -1913,8 +2595,18 @@ Object.assign(window, {
   updateProject,
   deleteProject,
   createTask,
+  createSubtask,
   updateTask,
   deleteTask,
+  addAcceptanceCriteria,
+  toggleAcceptanceCriteria,
+  deleteAcceptanceCriteria,
+  saveTaskComment,
+  resetCommentForm,
+  startEditComment,
+  deleteTaskComment,
+  uploadTaskAttachment,
+  deleteTaskAttachment,
   selectProject,
   showEditProjectModal,
   openTaskEditor,

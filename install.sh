@@ -201,7 +201,10 @@ OLLAMA_API_BASE=http://localhost:11435
 
 # Vision (image descriptions via Ollama)
 VISION_MODEL=qwen2.5vl:7b
-VISION_TIMEOUT=120
+VISION_TIMEOUT=20
+VISION_MODEL_REGEX=(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\\.5vl|qwen2-vl|qwen-vl|clip)
+VISION_MAX_TOKENS=120
+VISION_IMAGE_MAX_SIZE=640
 
 # Aider Configuration (for code edits)
 AIDER_MODEL=ollama_chat/qwen3:1.7b
@@ -219,6 +222,10 @@ AIDER_API_PORT=8001
 # Workspaces
 WORKSPACES_DIR=workspaces
 DEFAULT_WORKSPACE=poc
+
+# Attachments
+UPLOADS_DIR=uploads
+ATTACHMENT_MAX_BYTES=10485760
 
 # Project root for self-editing (dogfooding)
 PROJECT_ROOT=/mnt/c/dropbox/_coding/agentic/v2
