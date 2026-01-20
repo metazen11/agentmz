@@ -104,7 +104,7 @@ def get_task_context(task_id: int) -> Dict[str, Any]:
             "title": task.title,
             "description": task.description,
             "status": task.status.value if hasattr(task.status, 'value') else str(task.status),
-            "pipeline_stage": task.pipeline_stage.value if hasattr(task.pipeline_stage, 'value') else str(task.pipeline_stage),
+            "node_name": getattr(task, "node_name", None),
             "priority": task.priority,
             "acceptance_criteria": task.acceptance_criteria or [],
         },
@@ -120,7 +120,7 @@ def get_task_context(task_id: int) -> Dict[str, Any]:
         "work_cycles": [
             {
                 "id": wc.id,
-                "stage": wc.stage,
+                "node_name": getattr(wc, "node_name", None),
                 "status": wc.status,
                 "created_at": wc.created_at.isoformat() if wc.created_at else None,
             }
@@ -130,7 +130,7 @@ def get_task_context(task_id: int) -> Dict[str, Any]:
             {
                 "id": p.id,
                 "proof_type": p.proof_type,
-                "stage": p.stage,
+                "node_name": getattr(p, "node_name", None),
                 "description": p.description,
             }
             for p in proofs
@@ -203,7 +203,7 @@ def format_task_prompt(task_id: int, role: str = "dev") -> str:
     sections.append("## Your Task")
     sections.append(f"**{task['task_id']}**: {task['title']}")
     sections.append("")
-    sections.append(f"**Stage**: {task['pipeline_stage']} | **Role**: {role.upper()}")
+    sections.append(f"**Node**: {task['node_name']} | **Role**: {role.upper()}")
     sections.append("")
     if task.get("description"):
         sections.append(f"**Description**: {task['description']}")
@@ -375,7 +375,7 @@ def complete_subtask(subtask_id: int) -> Dict[str, Any]:
 # Proof-of-Work Tools
 # =============================================================================
 
-def add_proof(task_id: int, filepath: str, proof_type: str, stage: str,
+def add_proof(task_id: int, filepath: str, proof_type: str, node_name: str,
               description: str = "") -> Dict[str, Any]:
     """Add a proof artifact to document completed work.
 
@@ -383,7 +383,7 @@ def add_proof(task_id: int, filepath: str, proof_type: str, stage: str,
         task_id: The task ID
         filepath: Path to the proof file (screenshot, log, etc.)
         proof_type: Type of proof (screenshot, log, report)
-        stage: Pipeline stage (dev, qa, sec, docs)
+        node_name: Pipeline node (dev, qa, security, documentation)
         description: Description of what this proves
 
     Returns:
@@ -402,7 +402,7 @@ def add_proof(task_id: int, filepath: str, proof_type: str, stage: str,
         data = {
             "task_id": task_id,
             "proof_type": proof_type,
-            "stage": stage,
+            "node_name": node_name,
             "description": description,
         }
         response = requests.post(
@@ -496,7 +496,7 @@ These Python functions are available for managing tasks and submitting work:
 - complete_subtask(subtask_id) - Mark subtask done
 
 ## Proof-of-Work
-- add_proof(task_id, filepath, proof_type, stage, description) - Upload proof
+- add_proof(task_id, filepath, proof_type, node_name, description) - Upload proof
 - list_proofs(task_id) - List existing proofs
 
 ## Reporting

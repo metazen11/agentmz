@@ -33,7 +33,7 @@ class TaskInfo:
     title: str
     description: Optional[str] = None
     status: str = "pending"
-    stage: str = "dev"
+    node: str = "dev"
 
 
 @dataclass
@@ -137,7 +137,7 @@ class ProjectContext:
                             title=task.title,
                             description=task.description,
                             status=task.status,
-                            stage=task.stage,
+                            node=task.node_name or "dev",
                         )
                     else:
                         # History
@@ -146,7 +146,7 @@ class ProjectContext:
                             title=task.title,
                             description=task.description,
                             status=task.status,
-                            stage=task.stage,
+                            node=task.node_name or "dev",
                         ))
 
                 if tasks:
@@ -286,7 +286,7 @@ class ProjectContext:
             parts.append(f"\n\n## Current Task\n\n**{self.current_task.title}**")
             if self.current_task.description:
                 parts.append(f"\n{self.current_task.description}")
-            parts.append(f"\nStatus: {self.current_task.status} | Stage: {self.current_task.stage}")
+            parts.append(f"\nStatus: {self.current_task.status} | Node: {self.current_task.node}")
 
         # Task history
         if self.task_history:

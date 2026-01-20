@@ -211,7 +211,7 @@ class Task(Base):
     title: str                 # Short description
     description: str           # Full requirements
     status: str                # backlog | in_progress | done | failed
-    stage: str                 # dev | qa | review | complete
+    node_id: int               # task_nodes.id
     created_at: datetime
 ```
 

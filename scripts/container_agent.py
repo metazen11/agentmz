@@ -282,7 +282,7 @@ def main():
     if context:
         task_id = context.get('task_id')
         task_db_id = context.get('task_db_id')
-        log(f"Context loaded: task={task_id}, stage={context.get('stage')}")
+        log(f"Context loaded: task={task_id}, node={context.get('node')}")
         # Use prompt from context if available
         if context.get('prompt_override'):
             prompt = context['prompt_override']

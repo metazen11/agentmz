@@ -146,15 +146,15 @@ def backfill_proofs(dry_run: bool = False):
                         print(f"    Warning: Task {task_id} not found in database")
                         continue
 
-                    # Scan stage directories
-                    for stage in os.listdir(task_dir):
-                        stage_dir = os.path.join(task_dir, stage)
-                        if not os.path.isdir(stage_dir):
+                    # Scan node directories
+                    for node_name in os.listdir(task_dir):
+                        node_dir = os.path.join(task_dir, node_name)
+                        if not os.path.isdir(node_dir):
                             continue
 
                         # Scan files
-                        for filename in os.listdir(stage_dir):
-                            filepath = os.path.join(stage_dir, filename)
+                        for filename in os.listdir(node_dir):
+                            filepath = os.path.join(node_dir, filename)
                             if not os.path.isfile(filepath):
                                 continue
 
@@ -176,7 +176,7 @@ def backfill_proofs(dry_run: bool = False):
                                         project_id=project.id,
                                         task_id=task_id,
                                         run_id=None,  # Task-level proof
-                                        stage=stage,
+                                        node_name=node_name,
                                         filename=filename,
                                         filepath=filepath,
                                         proof_type=proof_type,
@@ -224,15 +224,15 @@ def backfill_proofs(dry_run: bool = False):
                     # This is a best-effort mapping for legacy run proofs
                     task_id = project_tasks[0].id
 
-                    # Scan stage directories
-                    for stage in os.listdir(run_dir):
-                        stage_dir = os.path.join(run_dir, stage)
-                        if not os.path.isdir(stage_dir):
+                    # Scan node directories
+                    for node_name in os.listdir(run_dir):
+                        node_dir = os.path.join(run_dir, node_name)
+                        if not os.path.isdir(node_dir):
                             continue
 
                         # Scan files
-                        for filename in os.listdir(stage_dir):
-                            filepath = os.path.join(stage_dir, filename)
+                        for filename in os.listdir(node_dir):
+                            filepath = os.path.join(node_dir, filename)
                             if not os.path.isfile(filepath):
                                 continue
 
@@ -254,7 +254,7 @@ def backfill_proofs(dry_run: bool = False):
                                         project_id=project.id,
                                         task_id=task_id,
                                         run_id=run_id,  # Run context
-                                        stage=stage,
+                                        node_name=node_name,
                                         filename=filename,
                                         filepath=filepath,
                                         proof_type=proof_type,

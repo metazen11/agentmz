@@ -596,7 +596,7 @@ RULES:
 3. When done, output a JSON report AND STOP
 
 WORKFLOW API:
-- Upload proof: curl -X POST {hub_url}/api/tasks/{task_id}/proofs/upload -F "file=@path" -F "proof_type=screenshot" -F "stage={role}"
+    - Upload proof: curl -X POST {hub_url}/api/tasks/{task_id}/proofs/upload -F "file=@path" -F "proof_type=screenshot" -F "node_name={role}"
 - Submit report: curl -X POST {hub_url}/api/tasks/{task_id}/work_cycle/complete -H "Content-Type: application/json" -d '{{"report_status":"pass","report_summary":"..."}}'
 
 IMPORTANT: After submitting your report, OUTPUT this JSON and STOP:
@@ -844,7 +844,7 @@ def get_provider() -> AgentProvider:
 # Automatic Proof Capture
 # =============================================================================
 
-def upload_proof(run_id: int, stage: str, proof_type: str, content: bytes,
+def upload_proof(run_id: int, node_name: str, proof_type: str, content: bytes,
                  filename: str, description: str) -> bool:
     """Upload a proof file to Workflow Hub."""
     import io
@@ -854,7 +854,7 @@ def upload_proof(run_id: int, stage: str, proof_type: str, content: bytes,
             'file': (filename, io.BytesIO(content), 'application/octet-stream')
         }
         data = {
-            'stage': stage,
+            'node_name': node_name,
             'proof_type': proof_type,
             'description': description
         }
@@ -875,7 +875,7 @@ def upload_proof(run_id: int, stage: str, proof_type: str, content: bytes,
         return False
 
 
-def get_existing_proof_hashes(run_id: int, stage: str) -> set:
+def get_existing_proof_hashes(run_id: int, node_name: str) -> set:
     """Get (proof_type, size) tuples of existing proofs to avoid duplicates."""
     try:
         response = requests.get(
@@ -886,7 +886,7 @@ def get_existing_proof_hashes(run_id: int, stage: str) -> set:
             proofs = response.json().get("proofs", [])
             # Use (proof_type, size) as dedup key - same type & size = duplicate
             return {(p.get("proof_type", ""), p.get("size", 0))
-                    for p in proofs if p.get("stage") == stage}
+                    for p in proofs if p.get("node_name") == node_name}
     except Exception as e:
         print(f"  Warning: Could not fetch existing proofs: {e}")
     return set()
@@ -901,10 +901,10 @@ def capture_automatic_proofs(agent_type: str, run_id: int, project_path: str,
     """
     print(f"Capturing automatic proofs for {agent_type}...")
     proofs_uploaded = 0
-    stage = agent_type  # dev, qa, sec, docs, etc.
+    node_name = agent_type  # dev, qa, sec, docs, etc.
 
     # Get existing proofs to avoid duplicates
-    existing = get_existing_proof_hashes(run_id, stage)
+    existing = get_existing_proof_hashes(run_id, node_name)
     if existing:
         print(f"  Found {len(existing)} existing proof(s), will skip duplicates")
 
@@ -924,7 +924,7 @@ def capture_automatic_proofs(agent_type: str, run_id: int, project_path: str,
         if should_upload("log", content, filename):
             success = upload_proof(
                 run_id=run_id,
-                stage=stage,
+                node_name=node_name,
                 proof_type="log",
                 content=content,
                 filename=filename,
@@ -952,7 +952,7 @@ def capture_automatic_proofs(agent_type: str, run_id: int, project_path: str,
                     if should_upload("report", content, filename):
                         success = upload_proof(
                             run_id=run_id,
-                            stage=stage,
+                            node_name=node_name,
                             proof_type="report",
                             content=content,
                             filename=filename,
@@ -979,7 +979,7 @@ def capture_automatic_proofs(agent_type: str, run_id: int, project_path: str,
                     if should_upload("log", content, test_path):
                         success = upload_proof(
                             run_id=run_id,
-                            stage=stage,
+                            node_name=node_name,
                             proof_type="log",
                             content=content,
                             filename=test_path,
@@ -1005,7 +1005,7 @@ def capture_automatic_proofs(agent_type: str, run_id: int, project_path: str,
                     if should_upload("report", content, sec_path):
                         success = upload_proof(
                             run_id=run_id,
-                            stage=stage,
+                            node_name=node_name,
                             proof_type="report",
                             content=content,
                             filename=sec_path,
@@ -1044,7 +1044,7 @@ def capture_automatic_proofs(agent_type: str, run_id: int, project_path: str,
                 if should_upload("screenshot", content, filename):
                     success = upload_proof(
                         run_id=run_id,
-                        stage=stage,
+                        node_name=node_name,
                         proof_type="screenshot",
                         content=content,
                         filename=filename,
@@ -1085,7 +1085,7 @@ def run_agent_logic(agent_type: str, run_id: int, project_path: str) -> Dict[str
 # Task-Centric WorkCycle Functions
 # =============================================================================
 
-def get_or_create_task_work_cycle(task_id: int, to_role: str, stage: str, run_id: int = None) -> Optional[Dict]:
+def get_or_create_task_work_cycle(task_id: int, to_role: str, node_name: str, run_id: int = None) -> Optional[Dict]:
     """Get current work_cycle or create one if none exists.
 
     Returns the work_cycle data including context_markdown for the agent prompt.
@@ -1107,7 +1107,7 @@ def get_or_create_task_work_cycle(task_id: int, to_role: str, stage: str, run_id
             f"{WORKFLOW_HUB_URL}/api/tasks/{task_id}/work_cycle/create",
             json={
                 "to_role": to_role,
-                "stage": stage,
+                "node_name": node_name,
                 "run_id": run_id,
                 "created_by": f"{AGENT_PROVIDER}-agent"
             },
@@ -1172,7 +1172,7 @@ def complete_task_work_cycle(task_id: int, report: Dict, work_cycle_id: int = No
         return False
 
 
-def run_agent_for_task(task_id: int, agent_type: str, stage: str = None,
+def run_agent_for_task(task_id: int, agent_type: str, node_name: str = None,
                        run_id: int = None, project_path: str = None) -> Dict[str, Any]:
     """Run an agent for a specific task using the work_cycle API.
 
@@ -1185,14 +1185,14 @@ def run_agent_for_task(task_id: int, agent_type: str, stage: str = None,
     Args:
         task_id: The task to work on
         agent_type: Agent role (dev, qa, sec, docs)
-        stage: Pipeline stage (defaults to agent_type)
+        node_name: Pipeline node (defaults to agent_type)
         run_id: Optional run ID for context
         project_path: Path to project (auto-detected if not provided)
 
     Returns:
         Agent report dict
     """
-    stage = stage or agent_type
+    node_name = node_name or agent_type
 
     # Get task details if project_path not provided
     if not project_path:
@@ -1208,7 +1208,7 @@ def run_agent_for_task(task_id: int, agent_type: str, stage: str = None,
 
     # Step 1: Get or create work_cycle
     print(f"Getting work_cycle for task {task_id}...")
-    work_cycle = get_or_create_task_work_cycle(task_id, agent_type, stage, run_id)
+    work_cycle = get_or_create_task_work_cycle(task_id, agent_type, node_name, run_id)
 
     if not work_cycle:
         return {
@@ -1416,7 +1416,7 @@ def main():
     task_parser.add_argument("--agent", required=True, choices=["pm", "dev", "qa", "security", "sec", "docs", "director"])
     task_parser.add_argument("--task-id", type=int, required=True, help="Task ID to work on")
     task_parser.add_argument("--run-id", type=int, help="Optional run ID for context")
-    task_parser.add_argument("--stage", help="Pipeline stage (defaults to agent type)")
+    task_parser.add_argument("--node", help="Pipeline node (defaults to agent type)")
     task_parser.add_argument("--project-path", help="Path to project (auto-detected if not provided)")
 
     # pipeline command - run full pipeline for a run
@@ -1451,7 +1451,7 @@ def main():
         report = run_agent_for_task(
             task_id=args.task_id,
             agent_type=agent_type,
-            stage=args.stage,
+            node_name=args.node,
             run_id=args.run_id,
             project_path=args.project_path
         )
@@ -1459,37 +1459,37 @@ def main():
         print(f"\nReport: {json.dumps(report, indent=2)}")
 
     elif args.command == "pipeline":
-        # Full pipeline mode - run all stages sequentially
+        # Full pipeline mode - run all nodes sequentially
         print(f"Running full pipeline for run {args.run_id}...")
         print(f"Project path: {args.project_path}")
         print(f"Max iterations: {args.max_iterations}")
 
-        # Pipeline stages in order
-        stages = ["pm", "dev", "qa", "security"]
+        # Pipeline nodes in order
+        nodes = ["pm", "dev", "qa", "security"]
         iteration = 0
 
-        for stage in stages:
+        for node_name in nodes:
             if iteration >= args.max_iterations:
                 print(f"Max iterations ({args.max_iterations}) reached, stopping pipeline")
                 break
 
             iteration += 1
             print(f"\n{'='*60}")
-            print(f"Pipeline stage {iteration}/{args.max_iterations}: {stage.upper()}")
+            print(f"Pipeline node {iteration}/{args.max_iterations}: {node_name.upper()}")
             print(f"{'='*60}")
 
-            report = run_agent_logic(stage, args.run_id, args.project_path)
-            print(f"\n{stage.upper()} Report: {json.dumps(report, indent=2)}")
+            report = run_agent_logic(node_name, args.run_id, args.project_path)
+            print(f"\n{node_name.upper()} Report: {json.dumps(report, indent=2)}")
 
             # Submit report
-            submit_report(args.run_id, stage, report)
+            submit_report(args.run_id, node_name, report)
 
             # Check if we should continue
             if report.get("status") == "fail":
-                print(f"\n{stage.upper()} stage failed, stopping pipeline")
+                print(f"\n{node_name.upper()} node failed, stopping pipeline")
                 break
 
-        print(f"\nPipeline completed after {iteration} stages")
+        print(f"\nPipeline completed after {iteration} nodes")
 
 
 if __name__ == "__main__":

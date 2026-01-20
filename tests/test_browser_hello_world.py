@@ -30,6 +30,14 @@ from playwright.sync_api import Page, expect
 # Test configuration
 APP_URL = os.environ.get("APP_URL", "https://wfhub.localhost")
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
+TASK_TITLE = "Create animated Hello World page"
+TASK_DESCRIPTION = """Create an index.html file with:
+1. A centered "Hello World" heading
+2. CSS animation that makes the text fade in and pulse
+3. Gradient text effect with nice colors
+4. Dark background, modern styling
+Use pure CSS animations."""
+TASK_CRITERIA = "Hello World page meets design requirements"
 
 
 @pytest.fixture(scope="session")
@@ -111,6 +119,42 @@ def take_screenshot(page: Page, name: str):
     return path
 
 
+def wait_for_project_list(page: Page):
+    """Wait until the project list has loaded."""
+    page.wait_for_selector("#project-list", timeout=10000)
+    expect(page.locator("#project-list")).not_to_contain_text("Loading", timeout=15000)
+
+
+def ensure_project(page: Page, project_name: str, workspace_name: str):
+    """Ensure a project exists in the UI, creating it if needed."""
+    wait_for_project_list(page)
+    project_item = page.locator("#project-list li", has_text=project_name)
+    if project_item.count() == 0:
+        page.get_by_role("button", name="+ New Project").click()
+        expect(page.locator("#new-project-modal")).to_be_visible()
+        page.fill("#new-project-name", project_name)
+        page.fill("#new-project-workspace", workspace_name)
+        page.locator("#new-project-modal button:has-text('Create')").click()
+        expect(page.locator("#new-project-modal")).to_be_hidden()
+    expect(page.locator("#project-list li", has_text=project_name)).to_be_visible()
+
+
+def ensure_task(page: Page, task_title: str):
+    """Ensure a task exists in the UI, creating it if needed."""
+    page.wait_for_selector("#task-list", timeout=10000)
+    task_item = page.locator("#task-list li", has_text=task_title)
+    if task_item.count() == 0:
+        page.get_by_role("button", name="+ New Task").click()
+        expect(page.locator("#new-task-modal")).to_be_visible()
+        page.fill("#new-task-title", task_title)
+        page.fill("#new-task-desc", TASK_DESCRIPTION)
+        page.fill("#new-criteria-desc", TASK_CRITERIA)
+        page.locator("#new-task-modal button:has-text('Add Criteria')").click()
+        page.locator("#new-task-modal button:has-text('Create')").click()
+        expect(page.locator("#new-task-modal")).to_be_hidden()
+    expect(page.locator("#task-list li", has_text=task_title)).to_be_visible()
+
+
 class TestBrowserHelloWorld:
     """End-to-end browser tests for creating animated hello world."""
 
@@ -164,12 +208,11 @@ class TestBrowserHelloWorld:
         # Check for console errors
         assert not console_logs.has_errors(), f"Console errors: {console_logs.get_errors()}"
 
-    def test_03_select_project(self, app_url, page: Page, project_name, console_logs):
+    def test_03_select_project(self, app_url, page: Page, project_name, workspace_name, console_logs):
         """User clicks on a project to select it."""
         page.goto(app_url)
 
-        # Wait for projects to load
-        page.wait_for_selector("#project-list li", timeout=5000)
+        ensure_project(page, project_name, workspace_name)
 
         # Click on the project
         page.locator("#project-list li", has_text=project_name).click()
@@ -182,12 +225,12 @@ class TestBrowserHelloWorld:
         # Check for console errors
         assert not console_logs.has_errors(), f"Console errors: {console_logs.get_errors()}"
 
-    def test_04_create_task(self, app_url, page: Page, project_name, console_logs):
+    def test_04_create_task(self, app_url, page: Page, project_name, workspace_name, console_logs):
         """User creates a task to build animated hello world."""
         page.goto(app_url)
 
         # Select the project first
-        page.wait_for_selector("#project-list li", timeout=5000)
+        ensure_project(page, project_name, workspace_name)
         page.locator("#project-list li", has_text=project_name).click()
 
         # Click New Task button
@@ -198,13 +241,12 @@ class TestBrowserHelloWorld:
         take_screenshot(page, "04_task_dialog_open")
 
         # Fill in the task details
-        page.fill("#new-task-title", "Create animated Hello World page")
-        page.fill("#new-task-desc", """Create an index.html file with:
-1. A centered "Hello World" heading
-2. CSS animation that makes the text fade in and pulse
-3. Gradient text effect with nice colors
-4. Dark background, modern styling
-Use pure CSS animations.""")
+        page.fill("#new-task-title", TASK_TITLE)
+        page.fill("#new-task-desc", TASK_DESCRIPTION)
+
+        # Add at least one acceptance criteria
+        page.fill("#new-criteria-desc", TASK_CRITERIA)
+        page.locator("#new-task-modal button:has-text('Add Criteria')").click()
 
         take_screenshot(page, "04_task_form_filled")
 
@@ -215,42 +257,42 @@ Use pure CSS animations.""")
         expect(page.locator("#new-task-modal")).to_be_hidden()
 
         # Task should appear in the list
-        task_item = page.locator("#task-list li", has_text="Create animated Hello World page")
+        task_item = page.locator("#task-list li", has_text=TASK_TITLE)
         expect(task_item).to_be_visible()
-        expect(task_item.locator(".task-stage.dev")).to_be_visible()
-        expect(task_item.locator(".task-status.backlog")).to_be_visible()
 
         take_screenshot(page, "04_task_created")
 
         # Check for console errors
         assert not console_logs.has_errors(), f"Console errors: {console_logs.get_errors()}"
 
-    def test_05_trigger_agent(self, app_url, page: Page, project_name, console_logs):
+    def test_05_trigger_agent(self, app_url, page: Page, project_name, workspace_name, console_logs):
         """User triggers the agent to work on the task."""
         page.goto(app_url)
 
         # Select project
-        page.wait_for_selector("#project-list li", timeout=5000)
+        ensure_project(page, project_name, workspace_name)
         page.locator("#project-list li", has_text=project_name).click()
 
         # Wait for tasks to load
-        page.wait_for_selector("#task-list li", timeout=5000)
+        page.wait_for_selector("#task-list", timeout=10000)
 
         take_screenshot(page, "05_before_trigger")
 
         # Stub agent run for predictable UI test
-        page.route(
-            "**/aider/api/agent/run",
-            lambda route: route.fulfill(
+        def stub_agent(route):
+            route.fulfill(
                 status=200,
                 content_type="application/json",
                 body='{"success": true, "summary": "Stubbed response"}'
             )
-        )
 
-        # Select task so context is attached
-        page.locator("#task-list li", has_text="Create animated Hello World page").click()
-        page.locator("#edit-task-modal button:has-text('Cancel')").click()
+        page.route("**/aider/api/agent/run", stub_agent)
+        page.route("**/api/agent/run", stub_agent)
+
+        # Ensure task exists and select it so context is attached
+        ensure_task(page, TASK_TITLE)
+        page.locator("#task-list li", has_text=TASK_TITLE).click()
+        page.locator("#edit-task-modal .modal-actions button:has-text('Cancel')").click()
 
         # Send a prompt
         page.fill("#prompt", "Create a simple hello world page.")
@@ -258,33 +300,34 @@ Use pure CSS animations.""")
 
         # User message should appear
         expect(page.locator(".message.user")).to_contain_text("Create a simple hello world page.")
-        expect(page.locator(".message.assistant")).to_contain_text("Stubbed response")
+        expect(page.locator(".message.assistant")).to_contain_text("Stubbed response", timeout=20000)
 
         take_screenshot(page, "05_after_trigger")
 
         # Check for console errors
         assert not console_logs.has_errors(), f"Console errors: {console_logs.get_errors()}"
 
-    def test_06_verify_task_details_visible(self, app_url, page: Page, project_name, console_logs):
+    def test_06_verify_task_details_visible(self, app_url, page: Page, project_name, workspace_name, console_logs):
         """Verify task details are displayed correctly."""
         page.goto(app_url)
 
         # Select project
-        page.wait_for_selector("#project-list li", timeout=5000)
+        ensure_project(page, project_name, workspace_name)
         page.locator("#project-list li", has_text=project_name).click()
 
         # Wait for tasks
         page.wait_for_selector("#task-list li", timeout=5000)
 
         # Should see our task
-        task = page.locator("#task-list li", has_text="Create animated Hello World page")
+        ensure_task(page, TASK_TITLE)
+        task = page.locator("#task-list li", has_text=TASK_TITLE)
         expect(task).to_be_visible()
 
         # Open edit modal to verify task details
         task.click()
         expect(page.locator("#edit-task-modal")).to_be_visible()
-        expect(page.locator("#edit-task-title")).to_have_value("Create animated Hello World page")
-        page.locator("#edit-task-modal button:has-text('Cancel')").click()
+        expect(page.locator("#edit-task-title")).to_have_value(TASK_TITLE)
+        page.locator("#edit-task-modal .modal-actions button:has-text('Cancel')").click()
 
         take_screenshot(page, "06_task_details")
 

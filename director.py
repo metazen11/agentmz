@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from database import SessionLocal
-from models import Project, Task
+from models import Project, Task, TaskNode
 from agent.runner import run_agent
 
 # Configuration
@@ -45,7 +45,7 @@ class Director:
         return {"actions": actions, "timestamp": datetime.now().isoformat()}
 
     def _check_completed_tasks(self, db) -> list:
-        """Check for tasks with result.json and advance their stage."""
+        """Check for tasks with result.json and advance their node."""
         actions = []
 
         # Find in_progress tasks
@@ -72,13 +72,15 @@ class Director:
 
             # Route based on result
             if result.get("status") == "PASS":
-                task.stage = self._next_stage(task.stage)
-                if task.stage == "complete":
+                next_node = self._next_node(task.node, db)
+                if next_node:
+                    task.node_id = next_node.id
+                else:
                     task.status = "done"
                 actions.append({
-                    "action": "advance_stage",
+                    "action": "advance_node",
                     "task_id": task.id,
-                    "new_stage": task.stage,
+                    "new_node": next_node.name if next_node else None,
                 })
             else:
                 # Failed - mark task for retry or investigation
@@ -98,10 +100,7 @@ class Director:
         actions = []
 
         # Find tasks that need work (backlog or in_progress but not complete)
-        task = db.query(Task).filter(
-            Task.status == "backlog",
-            Task.stage != "complete",
-        ).first()
+        task = db.query(Task).filter(Task.status == "backlog").first()
 
         if not task:
             return actions
@@ -116,7 +115,7 @@ class Director:
             "action": "start_task",
             "task_id": task.id,
             "task_title": task.title,
-            "stage": task.stage,
+            "node": task.node_name,
         })
 
         # Write context.json
@@ -129,7 +128,7 @@ class Director:
                 task_title=task.title,
                 task_description=task.description or "",
                 task_id=task.id,
-                stage=task.stage,
+                node_name=task.node_name or "dev",
             )
             actions.append({
                 "action": "agent_complete",
@@ -145,14 +144,19 @@ class Director:
 
         return actions
 
-    def _next_stage(self, current_stage: str) -> str:
-        """Get the next stage in the pipeline."""
-        stages = ["dev", "qa", "review", "complete"]
+    def _next_node(self, current_node: TaskNode, db) -> Optional[TaskNode]:
+        """Get the next node in the pipeline."""
+        if not current_node:
+            return None
+        order = ["pm", "dev", "qa", "security", "documentation"]
         try:
-            idx = stages.index(current_stage)
-            return stages[min(idx + 1, len(stages) - 1)]
+            idx = order.index(current_node.name)
         except ValueError:
-            return "complete"
+            return None
+        if idx >= len(order) - 1:
+            return None
+        next_name = order[idx + 1]
+        return db.query(TaskNode).filter(TaskNode.name == next_name).first()
 
     def _read_result(self, workspace_path: str, task_id: int) -> Optional[dict]:
         """Read result.json from workspace."""
@@ -180,7 +184,7 @@ class Director:
             "task_id": task.id,
             "title": task.title,
             "description": task.description,
-            "stage": task.stage,
+            "node": task.node_name,
             "timestamp": datetime.now().isoformat(),
         }
         context_path = pipeline_dir / "context.json"

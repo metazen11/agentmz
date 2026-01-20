@@ -293,7 +293,7 @@ JOB_CLEANUP_HOURS=24     # Delete old jobs after 24 hours
 
 ## Flow Example: Agent Execution
 
-1. **Director triggers agent** for task in DEV stage
+1. **Director triggers agent** for task in DEV node
 2. **AgentService.trigger_agent()** is called
 3. **Queue service creates LLMJob** with type=agent_run, priority=HIGH
 4. **Agent worker picks up job** (FIFO within priority)

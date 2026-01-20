@@ -34,7 +34,7 @@ import uuid
 import os
 import subprocess
 import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -1523,7 +1523,7 @@ Workspace: {workspace}"""
 
 def main():
     port = int(os.environ.get("PORT", 8001))
-    server = HTTPServer(("0.0.0.0", port), AiderAPIHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), AiderAPIHandler)
     print(f"[AIDER-API] Starting on port {port}")
     print(f"[AIDER-API] Aider Model: {config.aider_model}")
     print(f"[AIDER-API] Agent Model: {config.agent_model}")

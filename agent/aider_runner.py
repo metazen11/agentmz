@@ -21,7 +21,7 @@ def run_agent(
     task_title: str,
     task_description: str,
     task_id: int,
-    stage: str = "dev",
+    node_name: str = "dev",
     files: list = None,
 ) -> dict:
     """Run the Aider agent to complete a task.
@@ -31,7 +31,7 @@ def run_agent(
         task_title: Title of the task
         task_description: Description of what to do
         task_id: Database ID of the task
-        stage: Current pipeline stage (dev, qa, review)
+        node_name: Current pipeline node (pm, dev, qa, security, documentation)
         files: Optional list of files to edit
 
     Returns:
@@ -41,14 +41,16 @@ def run_agent(
     pipeline_dir = workspace_path / ".pipeline"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build prompt based on stage
-    stage_context = {
+    # Build prompt based on node
+    node_context = {
+        "pm": "You are a project planner. Clarify scope, break down work, and outline risks.",
         "dev": "You are a developer. Implement the requested feature or fix.",
         "qa": "You are a QA engineer. Test the implementation and verify it works.",
-        "review": "You are a code reviewer. Check for issues and suggest improvements.",
+        "security": "You are a security reviewer. Identify risks and verify protections.",
+        "documentation": "You are a technical writer. Document changes and how to validate them.",
     }
 
-    prompt = f"""{stage_context.get(stage, stage_context['dev'])}
+    prompt = f"""{node_context.get(node_name, node_context['dev'])}
 
 Task: {task_title}
 
@@ -160,6 +162,6 @@ if __name__ == "__main__":
             task_title="Create hello.txt",
             task_description="Create a file called hello.txt with 'Hello from Aider!'",
             task_id=0,
-            stage="dev",
+            node_name="dev",
         )
         print(f"\nResult: {json.dumps(result, indent=2)}")

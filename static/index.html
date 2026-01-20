@@ -299,7 +299,7 @@
                     ${task.description ? `<div class="task-description">${task.description}</div>` : ''}
                     <div class="task-meta">
                         <span class="badge badge-status badge-${task.status}">${task.status}</span>
-                        <span class="badge badge-${task.stage}">${task.stage}</span>
+                        <span class="badge badge-${task.node_name || 'dev'}">${task.node_name || 'dev'}</span>
                     </div>
                     ${childrenHtml}
                 </div>

@@ -72,7 +72,7 @@ def run_agent(
     task_title: str,
     task_description: str,
     task_id: int,
-    stage: str = "dev",
+    node_name: str = "dev",
 ) -> dict:
     """Run the agent to complete a task.
 
@@ -81,7 +81,7 @@ def run_agent(
         task_title: Title of the task
         task_description: Description of what to do
         task_id: Database ID of the task
-        stage: Current pipeline stage (dev, qa, review)
+        node_name: Current pipeline node (pm, dev, qa, security, documentation)
 
     Returns:
         dict with status (PASS/FAIL), summary, and details
@@ -90,13 +90,15 @@ def run_agent(
     pipeline_dir = Path(workspace_path) / ".pipeline"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build system prompt based on stage
-    stage_prompts = {
+    # Build system prompt based on node
+    node_prompts = {
+        "pm": "You are a project planner. Clarify scope, break down work, and outline risks.",
         "dev": "You are a developer agent. Implement the requested feature or fix the bug. Write clean, working code.",
         "qa": "You are a QA agent. Test the implementation. Run any tests, check for edge cases, verify functionality works.",
-        "review": "You are a code reviewer. Check code quality, look for issues, suggest improvements if needed.",
+        "security": "You are a security reviewer. Identify risks and verify protections.",
+        "documentation": "You are a technical writer. Document changes and how to validate them.",
     }
-    system_prompt = stage_prompts.get(stage, stage_prompts["dev"])
+    system_prompt = node_prompts.get(node_name, node_prompts["dev"])
 
     # Build the initial message
     user_message = f"""Task: {task_title}
@@ -257,6 +259,6 @@ if __name__ == "__main__":
         task_title="Test Task",
         task_description="Create a simple hello.txt file with 'Hello, World!' content",
         task_id=0,
-        stage="dev",
+        node_name="dev",
     )
     print(f"\nResult: {result}")

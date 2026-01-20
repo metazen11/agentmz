@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app
 from database import SessionLocal, engine
-from models import Base, Project, Task, TaskComment, TaskAttachment, TaskAcceptanceCriteria
+from models import Base, Project, Task, TaskComment, TaskAttachment, TaskAcceptanceCriteria, TaskNode, TaskRun
 
 
 @pytest.fixture(scope="module")
@@ -36,11 +36,13 @@ def setup_database(db_cleanup_allowed):
     yield
     db = SessionLocal()
     try:
+        db.query(TaskRun).delete()
         db.query(TaskAttachment).delete()
         db.query(TaskComment).delete()
         db.query(TaskAcceptanceCriteria).delete()
         db.query(Task).delete()
         db.query(Project).delete()
+        db.query(TaskNode).delete()
         db.commit()
     finally:
         db.close()
@@ -57,10 +59,25 @@ def _create_project(client, workspace_path):
 
 
 def _create_task(client, project_id):
+    db = SessionLocal()
+    try:
+        node = db.query(TaskNode).filter(TaskNode.name == "dev").first()
+        if not node:
+            node = TaskNode(name="dev", agent_prompt="Development workflow.")
+            db.add(node)
+            db.commit()
+            db.refresh(node)
+        node_id = node.id
+    finally:
+        db.close()
     res = client.post("/tasks", json={
         "project_id": project_id,
+        "node_id": node_id,
         "title": "Add comments and attachments",
         "description": "Seed task for comments and attachments tests.",
+        "acceptance_criteria": [
+            {"description": "Comments can be created", "passed": False, "author": "user"},
+        ],
     })
     assert res.status_code == 200
     return res.json()

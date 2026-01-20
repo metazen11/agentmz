@@ -92,7 +92,7 @@ def app_server(v2_dir, test_workspace):
 @pytest.fixture(scope="session")
 def app_url():
     """Return the app URL."""
-    return "http://localhost:8002"
+    return os.environ.get("APP_URL", "https://wfhub.localhost")
 
 
 def _db_name_from_url(url: str) -> str:

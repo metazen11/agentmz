@@ -99,16 +99,16 @@
 .task-status.in_progress { background: #2563eb; }
 .task-status.done { background: #16a34a; }
 .task-status.failed { background: #dc2626; }
-.task-stage {
+.task-node {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 3px;
   margin-left: 8px;
 }
-.task-stage.dev { background: #92400e; color: #fef3c7; }
-.task-stage.qa { background: #4338ca; color: #e0e7ff; }
-.task-stage.review { background: #be185d; color: #fce7f3; }
-.task-stage.complete { background: #166534; color: #dcfce7; }
+.task-node.dev { background: #92400e; color: #fef3c7; }
+.task-node.qa { background: #4338ca; color: #e0e7ff; }
+.task-node.review { background: #be185d; color: #fce7f3; }
+.task-node.complete { background: #166534; color: #dcfce7; }
 .task-row {
   display: flex;
   align-items: center;

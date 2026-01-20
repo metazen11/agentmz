@@ -200,7 +200,7 @@ def run_pipeline(project_name: str, task: str, repo_path: str):
     run_id = run["id"]
     print(f"✅ Run created: {run['name']} (ID: {run_id})")
 
-    # 3. Process each agent stage
+    # 3. Process each agent node
     agents = ["pm", "dev", "qa", "security"]
 
     for agent in agents:

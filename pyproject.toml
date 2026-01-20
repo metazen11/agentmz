@@ -9,6 +9,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v"
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100

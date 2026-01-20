@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app
 from database import SessionLocal, engine
-from models import Base, Project, Task, TaskComment, TaskAttachment
+from models import Base, Project, Task, TaskComment, TaskAttachment, TaskAcceptanceCriteria, TaskNode, TaskRun
 
 
 @pytest.fixture(scope="module")
@@ -49,11 +49,28 @@ def setup_database(db_cleanup_allowed):
     # Optional: clean up test data after module
     db = SessionLocal()
     try:
+        db.query(TaskRun).delete()
         db.query(TaskAttachment).delete()
         db.query(TaskComment).delete()
+        db.query(TaskAcceptanceCriteria).delete()
         db.query(Task).delete()
         db.query(Project).delete()
+        db.query(TaskNode).delete()
         db.commit()
+    finally:
+        db.close()
+
+
+def _ensure_node(name: str) -> int:
+    db = SessionLocal()
+    try:
+        node = db.query(TaskNode).filter(TaskNode.name == name).first()
+        if not node:
+            node = TaskNode(name=name, agent_prompt=f"{name} workflow.")
+            db.add(node)
+            db.commit()
+            db.refresh(node)
+        return node.id
     finally:
         db.close()
 
@@ -102,8 +119,10 @@ class TestTaskCreation:
 
     def test_create_hello_world_task(self, client):
         """User creates a task to build an animated hello world page."""
+        node_id = _ensure_node("dev")
         response = client.post("/tasks", json={
             "project_id": TestProjectCreation.project_id,
+            "node_id": node_id,
             "title": "Create animated Hello World page",
             "description": """Create an index.html file with:
 1. A centered "Hello World" heading
@@ -115,13 +134,16 @@ class TestTaskCreation:
 4. The animation should be smooth and professional-looking
 
 Use pure CSS animations, no JavaScript required for the animation itself.""",
+            "acceptance_criteria": [
+                {"description": "Hello World page meets design requirements", "passed": False, "author": "user"},
+            ],
         })
 
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Create animated Hello World page"
         assert data["status"] == "backlog"
-        assert data["stage"] == "dev"
+        assert data["node_name"] == "dev"
         assert data["project_id"] == TestProjectCreation.project_id
 
         TestTaskCreation.task_id = data["id"]
@@ -137,11 +159,16 @@ Use pure CSS animations, no JavaScript required for the animation itself.""",
 
     def test_create_subtask(self, client):
         """User can create a subtask."""
+        node_id = _ensure_node("dev")
         response = client.post("/tasks", json={
             "project_id": TestProjectCreation.project_id,
             "parent_id": TestTaskCreation.task_id,
+            "node_id": node_id,
             "title": "Add hover effect",
             "description": "Add a subtle hover effect to the heading",
+            "acceptance_criteria": [
+                {"description": "Hover effect is visible", "passed": False, "author": "user"},
+            ],
         })
 
         assert response.status_code == 200
@@ -188,15 +215,16 @@ class TestTaskUpdate:
 
     def test_update_task_status(self, client):
         """User can manually update task status."""
+        node_id = _ensure_node("qa")
         response = client.patch(f"/tasks/{TestTaskCreation.task_id}", json={
             "status": "done",
-            "stage": "complete",
+            "node_id": node_id,
         })
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "done"
-        assert data["stage"] == "complete"
+        assert data["node_name"] == "qa"
 
 
 class TestDirectorEndpoints:
