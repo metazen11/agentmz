@@ -199,6 +199,7 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
     last_comment = context.get("last_comment") or {}
     recent_files = context.get("recent_files") or {}
     discovery = context.get("discovery") or {}
+    mcp_info = context.get("mcp") or {}
 
     system_info = os.getenv("APP_URL") or "https://wfhub.localhost"
     request_body = payload.request.strip() or "Execute the task using the provided context."
@@ -250,6 +251,11 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
             "last_commit_files": recent_files.get("last_commit_files"),
             "working_changes": recent_files.get("working_changes"),
         },
+        "mcp": {
+            "notes": mcp_info.get("notes"),
+            "endpoints": mcp_info.get("endpoints"),
+            "reporting": mcp_info.get("reporting"),
+        } if mcp_info else None,
         "discovery": discovery,
         "acceptance_criteria": [
             item.get("description")
