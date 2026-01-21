@@ -106,6 +106,16 @@
   border-radius: 8px;
   min-width: 300px;
 }
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.modal-header h3 {
+  margin: 0;
+}
 .modal-content h3 {
   margin: 0 0 15px 0;
 }
@@ -129,6 +139,9 @@
   gap: 10px;
   margin-top: 10px;
 }
+.modal-actions .run-task-btn {
+  margin-left: auto;
+}
 .modal-actions .delete {
   background: #5a2a2a;
 }
@@ -139,6 +152,36 @@
 .task-modal-content {
   max-height: 85vh;
   overflow-y: auto;
+}
+
+.preview-textarea {
+  min-height: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+}
+
+.run-list {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+.run-item {
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.run-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+}
+.run-item-meta {
+  color: #9ca3af;
+  font-size: 11px;
+  margin-top: 4px;
 }
 .details-panel {
   margin-top: 14px;

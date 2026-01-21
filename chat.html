@@ -31,15 +31,12 @@
 
       <div class="sidebar-section-header spaced">
         <h3>Tasks</h3>
-        <button class="btn-small" onclick="showNewTaskModal()">+ New Task</button>
+        <button class="btn-small" onclick="showNewTaskModal()" aria-label="New Task" title="New Task">New</button>
+        <button class="btn-small" onclick="showIntegrationWizard()" aria-label="Import Tasks" title="Import Tasks">Import</button>
       </div>
       <ul class="task-list" id="task-list">
         <li style="color: #666;">Select a project</li>
       </ul>
-
-      <button class="integrations-btn" onclick="showIntegrationWizard()">
-        Import Tasks (Asana, Jira...)
-      </button>
 
       <div class="file-tree" id="file-tree">
         <div class="file-tree-header">
@@ -109,6 +106,10 @@
       <div id="log-pane-main" class="log-pane" style="display:none;"></div>
     </div>
   </div>
+</div>
+
+<div id="tooltip-layer" class="tooltip-layer">
+  <div id="global-tooltip" class="tooltip"></div>
 </div>
 
 <!-- New Project Modal -->
@@ -182,7 +183,10 @@
 <!-- Edit Task Modal -->
 <div id="edit-task-modal" class="modal" style="display:none;">
   <div class="modal-content task-modal-content">
-    <h3>Edit Task</h3>
+    <div class="modal-header">
+      <h3>Edit Task</h3>
+      <button class="btn-small secondary" onclick="hideModals()" aria-label="Close">×</button>
+    </div>
     <input type="text" id="edit-task-title" placeholder="Task title">
     <textarea id="edit-task-desc" placeholder="Description (optional)"></textarea>
     <div id="edit-task-parent-row" class="task-parent-row" style="display:none;">
@@ -236,11 +240,26 @@
       </div>
     </div>
 
+    <div class="details-panel">
+      <div class="details-title">Run Preview</div>
+      <textarea id="task-run-preview" class="preview-textarea" readonly
+                placeholder="Build prompt to preview the run context"></textarea>
+      <div class="comment-actions">
+        <button onclick="buildTaskPromptPreview()">Build Prompt</button>
+      </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title">Runs</div>
+      <div id="task-runs-list" class="run-list">No runs yet</div>
+    </div>
+
     <div class="modal-actions">
       <button onclick="updateTask()">Save</button>
-      <button class="secondary" onclick="runTaskFromModal(getEditingTaskId())">Run</button>
       <button class="delete" onclick="deleteTask(getEditingTaskId())">Delete</button>
       <button class="secondary" onclick="hideModals()">Cancel</button>
+      <button id="edit-task-run-btn" class="secondary run-task-btn"
+              onclick="runTaskFromModal(getEditingTaskId())">Run</button>
     </div>
   </div>
 </div>
@@ -379,6 +398,8 @@ const taskAttachmentsListEl = document.getElementById('task-attachments-list');
 const attachmentFileEl = document.getElementById('attachment-file');
 const attachmentUploadedByEl = document.getElementById('attachment-uploaded-by');
 const attachmentCommentIdEl = document.getElementById('attachment-comment-id');
+const taskRunPreviewEl = document.getElementById('task-run-preview');
+const taskRunsListEl = document.getElementById('task-runs-list');
 const newTaskParentSelectEl = document.getElementById('new-task-parent-id');
 const editTaskParentRowEl = document.getElementById('edit-task-parent-row');
 const editTaskParentLinkEl = document.getElementById('edit-task-parent-link');
@@ -408,6 +429,7 @@ const getCurrentLogTab = () => state.currentLogTab;
 
 let taskComments = [];
 let taskAttachments = [];
+let taskRuns = [];
 let editingCommentId = null;
 let visionImageMaxSize = 640;
 let visionModelRegex = null;
@@ -421,6 +443,11 @@ function formatDate(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString();
+}
+
+function truncateText(value, maxLength = 800) {
+  if (!value) return '';
+  return value;
 }
 
 function escapeHtml(value) {
@@ -439,7 +466,41 @@ function renderTooltip(rows) {
       <span class="tooltip-value">${escapeHtml(row.value)}</span>
     </div>
   `).join('');
-  return `<div class="tooltip">${items}</div>`;
+  return `<div class="tooltip tooltip-source">${items}</div>`;
+}
+
+function wireTooltipHandlers(container) {
+  if (!container) return;
+  const globalTooltipEl = document.getElementById('global-tooltip');
+  if (!globalTooltipEl) return;
+  container.querySelectorAll('.has-tooltip').forEach(item => {
+    const tooltip = item.querySelector('.tooltip');
+    if (!tooltip) return;
+    item.addEventListener('mouseenter', () => {
+      globalTooltipEl.innerHTML = tooltip.innerHTML;
+      positionTooltip(item, globalTooltipEl);
+      globalTooltipEl.classList.add('visible');
+    });
+    item.addEventListener('mouseleave', () => {
+      globalTooltipEl.classList.remove('visible');
+    });
+  });
+}
+
+function positionTooltip(item, tooltip) {
+  const itemRect = item.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const padding = 12;
+  const left = Math.min(
+    itemRect.right + padding,
+    window.innerWidth - tooltipRect.width - padding
+  );
+  const top = Math.min(
+    itemRect.top,
+    window.innerHeight - tooltipRect.height - padding
+  );
+  tooltip.style.left = `${Math.max(padding, left)}px`;
+  tooltip.style.top = `${Math.max(padding, top)}px`;
 }
 
 function flattenTasks(taskList, depth = 0, out = []) {
@@ -841,6 +902,7 @@ function renderProjects() {
       ])}
     </li>
   `).join('');
+  wireTooltipHandlers(projectListEl);
 }
 
 async function selectProject(projectId) {
@@ -925,6 +987,7 @@ function renderTasks() {
     </li>
   `;
   }).join('');
+  wireTooltipHandlers(taskListEl);
 }
 
 function selectTask(taskId) {
@@ -1877,6 +1940,10 @@ function showEditTaskModal(taskId) {
   loadTaskAcceptanceCriteria(taskId);
   loadTaskComments(taskId);
   loadTaskAttachments(taskId);
+  loadTaskRuns(taskId);
+  if (taskRunPreviewEl) {
+    taskRunPreviewEl.value = '';
+  }
 }
 
 async function updateTask() {
@@ -2247,6 +2314,46 @@ function renderTaskAttachments() {
   `).join('');
 }
 
+async function loadTaskRuns(taskId) {
+  if (!taskRunsListEl) return;
+  taskRunsListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/runs`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    taskRuns = await res.json();
+    renderTaskRuns();
+  } catch (err) {
+    taskRunsListEl.textContent = `Failed to load runs: ${err.message}`;
+  }
+}
+
+function renderTaskRuns() {
+  if (!taskRunsListEl) return;
+  if (!taskRuns.length) {
+    taskRunsListEl.textContent = 'No runs yet';
+    return;
+  }
+  taskRunsListEl.innerHTML = taskRuns.map(run => {
+    const status = run.status || 'unknown';
+    const summary = truncateText(run.summary || run.error || '', 160);
+    const started = formatDate(run.started_at);
+    const finished = run.finished_at ? formatDate(run.finished_at) : '-';
+    return `
+      <div class="run-item">
+        <div class="run-item-header">
+          <span>#${run.id} · ${escapeHtml(status)}</span>
+          <span>${escapeHtml(started)}</span>
+        </div>
+        <div class="run-item-meta">Node ${run.node_id} · Finished ${escapeHtml(finished)}</div>
+        ${summary ? `<div class="run-item-meta">${escapeHtml(summary)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
 async function uploadTaskAttachment() {
   if (!state.selectedTask) {
     alert('Select a task first');
@@ -2359,7 +2466,7 @@ function buildTaskRequest(task) {
   return title || description || 'Execute the task using the provided context.';
 }
 
-async function buildPromptForRequest(taskId, requestText, imageLayer) {
+async function buildPromptForRequest(taskId, requestText, imageLayer, concise = false) {
   const normalizedRequest = (requestText || '').trim()
     || 'Execute the task using the provided context.';
   if (!taskId) {
@@ -2373,7 +2480,8 @@ async function buildPromptForRequest(taskId, requestText, imageLayer) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         request: normalizedRequest,
-        image_context: imageLayer || null
+        image_context: imageLayer || null,
+        concise
       })
     });
     if (!res.ok) {
@@ -2409,11 +2517,18 @@ async function createTaskRun(taskId, nodeId) {
     if (!res.ok) {
       return null;
     }
-    return await res.json();
+    const run = await res.json();
+    await refreshTaskRuns(taskId);
+    return run;
   } catch (err) {
     console.warn('Failed to create task run:', err.message);
     return null;
   }
+}
+
+async function refreshTaskRuns(taskId) {
+  if (getEditingTaskId() !== taskId) return;
+  await loadTaskRuns(taskId);
 }
 
 async function updateTaskRun(taskId, runId, payload) {
@@ -2424,12 +2539,13 @@ async function updateTaskRun(taskId, runId, payload) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    await refreshTaskRuns(taskId);
   } catch (err) {
     console.warn('Failed to update task run:', err.message);
   }
 }
 
-async function postAgentComment(taskId, nodeLabel, runSummary = '') {
+async function postAgentComment(taskId, nodeLabel, runSummary = '', requestText = '') {
   const context = await fetchTaskContext(taskId);
   if (!context) return;
   const gitInfo = context.git || {};
@@ -2438,6 +2554,9 @@ async function postAgentComment(taskId, nodeLabel, runSummary = '') {
   const working = Array.isArray(gitInfo.working_changes) ? gitInfo.working_changes : [];
 
   const lines = [`Agent run (${nodeLabel})`];
+  if (requestText) {
+    lines.push(`Request: ${truncateText(requestText, 500)}`);
+  }
   if (runSummary) lines.push(`Summary: ${runSummary}`);
   if (gitSummary) lines.push(`Last commit: ${gitSummary}`);
   if (files.length) lines.push(`Last commit files: ${files.join(', ')}`);
@@ -2502,7 +2621,7 @@ async function buildVisionImageLayer() {
   return imageLayer;
 }
 
-async function runAgentRequest(requestText, task = null, imageLayer = '') {
+async function runAgentRequest(requestText, task = null, imageLayer = '', options = {}) {
   const workspace = state.selectedProject
     ? getWorkspaceName(state.selectedProject.workspace_path)
     : 'poc';
@@ -2517,7 +2636,9 @@ async function runAgentRequest(requestText, task = null, imageLayer = '') {
   statusEl.className = 'status connected';
 
   try {
-    const fullPrompt = await buildPromptForRequest(task?.id, requestText, imageLayer);
+    const concise = options.concise === true;
+    const fullPrompt = options.promptOverride
+      || await buildPromptForRequest(task?.id, requestText, imageLayer, concise);
     const res = await fetch(`${AIDER_API}/api/agent/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2532,7 +2653,8 @@ async function runAgentRequest(requestText, task = null, imageLayer = '') {
     const data = await res.json();
     console.log('Agent response:', data);
 
-    if (data.success || data.status === 'PASS') {
+    const ok = data.success || data.status === 'PASS';
+    if (ok) {
       const responseText = data.summary || 'Task completed';
       addMessage('assistant', responseText, data.tool_calls);
       statusEl.textContent = 'Ready';
@@ -2540,7 +2662,7 @@ async function runAgentRequest(requestText, task = null, imageLayer = '') {
       if (state.selectedProject) loadFileTree(state.selectedProject.id);
       if (task?.id) {
         const nodeLabel = task.node_name || 'dev';
-        await postAgentComment(task.id, nodeLabel, data.summary || '');
+        await postAgentComment(task.id, nodeLabel, data.summary || '', requestText);
       }
       if (task?.id && runId) {
         await updateTaskRun(task.id, runId, {
@@ -2550,6 +2672,7 @@ async function runAgentRequest(requestText, task = null, imageLayer = '') {
           finished_at: new Date().toISOString()
         });
       }
+      return { ok: true, data };
     } else {
       addMessage('error', `Error: ${data.error || data.summary || 'Unknown error'}`);
       statusEl.textContent = 'Error - see output';
@@ -2563,6 +2686,7 @@ async function runAgentRequest(requestText, task = null, imageLayer = '') {
         });
       }
     }
+    return { ok: false, data };
   } catch (err) {
     console.error('Fetch error:', err);
     addMessage('error', 'Connection error: ' + err.message);
@@ -2575,7 +2699,25 @@ async function runAgentRequest(requestText, task = null, imageLayer = '') {
         finished_at: new Date().toISOString()
       });
     }
+    return { ok: false, error: err };
   }
+}
+
+async function buildTaskPromptPreview(taskId = null) {
+  const targetId = taskId || getEditingTaskId();
+  if (!targetId) {
+    alert('Select a task first');
+    return '';
+  }
+  const task = findTaskById(targetId);
+  if (!task) return '';
+  const requestText = buildTaskRequest(task);
+  const imageLayer = await buildVisionImageLayer();
+  const prompt = await buildPromptForRequest(targetId, requestText, imageLayer, true);
+  if (taskRunPreviewEl) {
+    taskRunPreviewEl.value = prompt;
+  }
+  return prompt;
 }
 
 async function runTaskFromList(taskId) {
@@ -2593,12 +2735,32 @@ async function runTaskFromList(taskId) {
   const requestText = buildTaskRequest(task);
   addMessage('system', `Running task #${task.id}: ${task.title || 'Untitled task'}`);
   const imageLayer = await buildVisionImageLayer();
-  await runAgentRequest(requestText, task, imageLayer);
+  const prompt = await buildPromptForRequest(task.id, requestText, imageLayer, true);
+  if (getEditingTaskId() === task.id && taskRunPreviewEl) {
+    taskRunPreviewEl.value = prompt;
+  }
+  return await runAgentRequest(requestText, task, imageLayer, {
+    concise: true,
+    promptOverride: prompt
+  });
 }
 
 async function runTaskFromModal(taskId) {
   if (!taskId) return;
-  await runTaskFromList(taskId);
+  const runBtn = document.getElementById('edit-task-run-btn');
+  if (runBtn) {
+    runBtn.disabled = true;
+  }
+  try {
+    const result = await runTaskFromList(taskId);
+    if (result?.ok) {
+      hideModals();
+    }
+  } finally {
+    if (runBtn) {
+      runBtn.disabled = false;
+    }
+  }
 }
 
 // Chat functions
@@ -2874,6 +3036,7 @@ Object.assign(window, {
   deleteTaskComment,
   uploadTaskAttachment,
   deleteTaskAttachment,
+  buildTaskPromptPreview,
   selectProject,
   showEditProjectModal,
   openTaskEditor,

@@ -32,7 +32,20 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 ENV_FILE_PATH = Path(os.getenv("PROJECT_ROOT", Path(__file__).parent)).resolve() / ".env"
 
-from routers import projects, tasks, acceptance_criteria, nodes, comments, attachments, task_runs, integrations, workspace, operations, logs
+from routers import (
+    projects,
+    tasks,
+    acceptance_criteria,
+    nodes,
+    comments,
+    attachments,
+    task_runs,
+    integrations,
+    workspace,
+    operations,
+    logs,
+    help_agents,
+)
 
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
 app.include_router(tasks.router, tags=["tasks"])
@@ -45,6 +58,7 @@ app.include_router(integrations.router, tags=["integrations"])
 app.include_router(workspace.router, tags=["workspace"])
 app.include_router(operations.router, tags=["operations"])
 app.include_router(logs.router, tags=["logs"])
+app.include_router(help_agents.router, tags=["help"])
 
 @app.get("/")
 def root():

@@ -120,3 +120,87 @@ def build_task_context_payload(task: Task, project: Project, db: Session) -> dic
         },
     }
     return context
+
+
+def build_task_context_summary(task: Task, project: Project, db: Session) -> dict:
+    """Return a concise context payload for prompting."""
+    context = build_task_context_payload(task, project, db)
+    task_info = context.get("task") or {}
+    node_info = context.get("node") or {}
+    objective_parts = [task_info.get("title"), task_info.get("description")]
+    objective = "\n\n".join([part for part in objective_parts if part])
+    git_info = context.get("git", {})
+    last_comment_entry = context.get("comments_recent", [None])[0]
+    summary = {
+        "task": {
+            "id": task_info.get("id"),
+            "project_id": task_info.get("project_id"),
+            "parent_id": task_info.get("parent_id"),
+            "node_id": task_info.get("node_id"),
+            "node_name": task_info.get("node_name") or node_info.get("name"),
+            "title": task_info.get("title"),
+            "description": task_info.get("description"),
+            "status": task_info.get("status"),
+        },
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "workspace_path": project.workspace_path,
+            "environment": project.environment,
+        },
+        "objective": objective,
+        "node": {
+            "id": node_info.get("id"),
+            "name": node_info.get("name"),
+            "agent_prompt": node_info.get("agent_prompt"),
+        } if node_info else None,
+        "acceptance_criteria": [
+            {
+                "id": item.get("id"),
+                "description": item.get("description"),
+                "passed": item.get("passed"),
+            }
+            for item in context.get("acceptance_criteria", [])
+        ],
+        "context_counts": {
+            "attachments": len(context.get("attachments", [])),
+            "comments_recent": len(context.get("comments_recent", [])),
+        },
+        "discovery": {
+            "instructions": (
+                "Fetch more context only if needed for the objective. "
+                "Use the endpoints below to query additional details."
+            ),
+            "endpoints": {
+                "task": f"/tasks/{task.id}",
+                "comments": f"/tasks/{task.id}/comments",
+                "attachments": f"/tasks/{task.id}/attachments",
+                "acceptance": f"/tasks/{task.id}/acceptance",
+                "runs": f"/tasks/{task.id}/runs",
+                "project_files": f"/projects/{project.id}/files",
+                "git_status": f"/projects/{project.id}/git/status",
+            },
+            "reporting": {
+                "comment_author": f"agent.{task.node_name or 'dev'}",
+                "comment_guidance": (
+                    "After each run, post a comment with tests executed and screenshots captured."
+                ),
+            },
+        },
+        "recent_files": {
+            "last_commit_summary": git_info.get("last_commit_summary"),
+            "last_commit_files": git_info.get("last_commit_files") or [],
+            "working_changes": git_info.get("working_changes") or [],
+        },
+        "last_comment": {
+            "id": last_comment_entry.id if last_comment_entry else None,
+            "author": last_comment_entry.author if last_comment_entry else None,
+            "body": last_comment_entry.body if last_comment_entry else None,
+            "created_at": (
+                last_comment_entry.created_at.isoformat()
+                if last_comment_entry and last_comment_entry.created_at
+                else None
+            ),
+        } if last_comment_entry else None,
+    }
+    return summary

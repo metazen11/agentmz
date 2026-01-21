@@ -932,3 +932,111 @@ Implemented provider-agnostic external task import system:
 
 ### Tests
 - `pytest tests/ -v` (105 passed, 38 skipped, 15 warnings)
+
+---
+
+## Implementation Status (2026-01-21 - Session 25)
+
+### Completed
+- [x] Moved task import control into Tasks header (`New` + `Import`) and removed the large sidebar import button
+- [x] Increased tooltip layering so hover cards render above list items without layout shifts
+- [x] Updated browser test selectors for the new task button label
+
+### Tests
+- `pytest tests/test_browser_hello_world.py -v` (8 passed)
+
+---
+
+## Implementation Status (2026-01-21 - Session 26)
+
+### Completed
+- [x] Added global tooltip layer and hover wiring so tooltips render above list rows without shifting layout
+- [x] Added close button to edit task modal header
+- [x] Added Playwright hover tooltip screenshot test
+- [x] Cleaned up Playwright projects via API
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_03b_project_tooltip_hover -v` (1 passed)
+
+---
+
+## Implementation Status (2026-01-21 - Session 27)
+
+### Completed
+- [x] Moved modal Run button to far-right and added a close “×” in edit task header
+- [x] Run now disables the modal button, appends request details to the agent comment, and closes on success
+- [x] Tooltips render on an overlay layer without reflow
+- [x] Added Playwright hover tooltip screenshot test and cleaned Playwright projects
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v` (1 passed)
+
+---
+
+## Implementation Status (2026-01-21 - Session 28)
+
+### Completed
+- [x] Added run preview textarea + run list in edit task modal for explicit run inspection
+- [x] Runs now refresh before/after and preview uses concise prompt with node role
+- [x] Run comments include request summary; modal Run disables during execution and closes on success
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v` (1 passed)
+
+---
+
+## Implementation Status (2026-01-21 - Session 29)
+
+### Completed
+- [x] Removed ellipsis truncation from concise task context; prompt previews now show full objective/content
+- [x] Run request text no longer truncates descriptions in the prompt
+
+### Tests
+- Not run (prompt formatting change only)
+
+---
+
+## Implementation Status (2026-01-21 - Session 30)
+
+### Completed
+- [x] Prompt builder now includes agent directives, objective, acceptance criteria, recent files, discovery instructions, and last comment before the request
+- [x] Concise context payload exposes recent files, discovery endpoints, and last comment metadata
+- [x] Added run preview/test adjustments to reflect the richer prompt
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v` (1 passed)
+
+---
+
+## Implementation Status (2026-01-21 - Session 31)
+
+### Completed
+- [x] Prompt now exposes explicit PROJECT_INFO (name, workspace, env) before discovery/objective
+- [x] Concise context payload carries project metadata for agents to reference
+- [x] Re-ran targeted browser test after prompt tweaks
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v`
+
+---
+
+## Implementation Status (2026-01-21 - Session 32)
+
+### Completed
+- [x] PROJECT_INFO now includes env data and we inject the public `APP_URL`/`https://wfhub.localhost` as `SYSTEM_DOMAIN`
+- [x] Prompt instructions remind agents of the external domain before listing discovery endpoints
+- [x] Re-ran the targeted Playwright run to validate the prompt change
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v`
+
+---
+
+## Implementation Status (2026-01-21 - Session 33)
+
+### Completed
+- [x] Added `helpServiceForAgents` endpoint returning project/task/node context, discovery endpoints, and system domain info
+- [x] Prompt builder now references the help service URL (`SYSTEM_DOMAIN`) so agents know which host to call when they forget
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v`

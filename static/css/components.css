@@ -69,11 +69,19 @@ button.secondary:hover { background: #777; }
 
 .has-tooltip {
   position: relative;
+  overflow: visible;
+  z-index: 1;
+}
+.tooltip-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3000;
 }
 .tooltip {
   position: absolute;
-  left: 8px;
-  top: calc(100% + 8px);
+  left: 0;
+  top: 0;
   background: #111;
   color: #e5e5e5;
   padding: 10px 12px;
@@ -81,16 +89,19 @@ button.secondary:hover { background: #777; }
   border: 1px solid #333;
   font-size: 11px;
   line-height: 1.4;
-  display: none;
+  display: grid;
+  visibility: hidden;
   opacity: 0;
-  transform: translateY(6px);
   pointer-events: none;
-  z-index: 20;
   min-width: 220px;
   max-width: min(640px, 90vw);
   width: max-content;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   gap: 6px;
+  transition: opacity 0.12s ease;
+}
+.tooltip-source {
+  display: none;
 }
 .tooltip-row {
   display: grid;
@@ -107,8 +118,7 @@ button.secondary:hover { background: #777; }
   color: #f3f4f6;
   word-break: break-word;
 }
-.has-tooltip:hover .tooltip {
-  display: grid;
+.tooltip.visible {
+  visibility: visible;
   opacity: 1;
-  transform: translateY(0);
 }

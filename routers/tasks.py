@@ -1,4 +1,5 @@
 """Routers for Task CRUD operations."""
+import os
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from datetime import datetime
 
 from database import get_db
 from models import Project, Task, TaskAcceptanceCriteria, TaskNode, TaskExternalLink
-from core.context import build_task_context_payload
+from core.context import build_task_context_payload, build_task_context_summary
 from routers.nodes import get_node_or_404, get_default_node
 from routers.acceptance_criteria import AcceptanceCriteriaCreate
 from routers.acceptance_criteria import AcceptanceCriteriaCreate
@@ -51,6 +52,7 @@ TaskResponse.model_rebuild()
 class TaskPromptRequest(BaseModel):
     request: str
     image_context: Optional[str] = None
+    concise: bool = False
 
 class TaskExportRequest(BaseModel):
     integration_id: int
@@ -179,7 +181,7 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
 
 @router.post("/tasks/{task_id}/prompt")
 def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = Depends(get_db)):
-    from langchain_core.prompts import PromptTemplate
+    from typing import List
     import json
 
     if not payload.request.strip():
@@ -189,22 +191,95 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    context = build_task_context_payload(task, project, db)
-    node_prompt = ""
-    if context.get("node") and context["node"].get("agent_prompt"):
-        node_prompt = context["node"]["agent_prompt"]
-
-    node_section = f"NODE_ROLE:\n{node_prompt}\n\n" if node_prompt else ""
-    task_section = f"TASK_CONTEXT:\n{json.dumps(context, indent=2)}\n\n"
-    image_section = f"{payload.image_context}\n\n" if payload.image_context else ""
-
-    template = "{node_section}{task_section}{image_section}REQUEST:\\n{request}"
-    prompt = PromptTemplate.from_template(template).format(
-        node_section=node_section,
-        task_section=task_section,
-        image_section=image_section,
-        request=payload.request,
+    context = (
+        build_task_context_summary(task, project, db)
+        if payload.concise
+        else build_task_context_payload(task, project, db)
     )
+    sections: List[str] = []
+    node = context.get("node", {})
+    node_prompt = node.get("agent_prompt")
+    if node_prompt:
+        sections.append(f"NODE_DIRECTIVE:\n{node_prompt}\n")
+
+    project_info = context.get("project", {})
+    if project_info:
+        env_value = project_info.get("environment")
+        env_lines = []
+        if isinstance(env_value, dict):
+            env_lines = [f"{key}={value}" for key, value in env_value.items()]
+        elif env_value:
+            env_lines = [str(env_value)]
+        project_lines = [
+            "PROJECT_INFO:",
+            f"Name: {project_info.get('name')}",
+            f"Workspace: {project_info.get('workspace_path')}",
+        ]
+        if env_lines:
+            project_lines.append("Environment:")
+            project_lines.extend(env_lines)
+        else:
+            project_lines.append("Environment: (not provided)")
+        sections.append("\n".join(project_lines) + "\n")
+        system_info = os.getenv("APP_URL") or "https://wfhub.localhost"
+        sections.append(f"SYSTEM_DOMAIN:\n{system_info}\n")
+
+    objective = context.get("objective")
+    if objective:
+        sections.append(f"TASK_OBJECTIVE:\n{objective}\n")
+
+    last_comment = context.get("last_comment")
+    if last_comment and last_comment.get("body"):
+        comment_author = last_comment.get("author", "unknown")
+        sections.append(
+            f"LAST_COMMENT:\n"
+            f"[{comment_author}] {last_comment.get('body')}\n"
+        )
+
+    recent_files = context.get("recent_files", {})
+    file_lines = []
+    if recent_files.get("last_commit_summary"):
+        file_lines.append(f"Last commit summary: {recent_files['last_commit_summary']}")
+    if recent_files.get("last_commit_files"):
+        files_list = ", ".join(recent_files["last_commit_files"])
+        file_lines.append(f"Last commit files: {files_list}")
+    if recent_files.get("working_changes"):
+        working_list = ", ".join(
+            f"{item.get('status')} {item.get('path')}"
+            for item in recent_files["working_changes"]
+            if item.get("path")
+        )
+        if working_list:
+            file_lines.append(f"Working changes: {working_list}")
+    if file_lines:
+        sections.append(f"RECENT_FILES:\n" + "\n".join(file_lines) + "\n")
+
+    discovery = context.get("discovery", {})
+    discovery_lines = []
+    if discovery.get("instructions"):
+        discovery_lines.append(discovery["instructions"])
+    endpoints = discovery.get("endpoints", {})
+    if endpoints:
+        discovery_lines.append(
+            "Endpoints:\n" + "\n".join(f"{key}: {value}" for key, value in endpoints.items())
+        )
+    if discovery_lines:
+        sections.append(f"DISCOVERY:\n" + "\n".join(discovery_lines) + "\n")
+
+    if payload.image_context:
+        sections.append(f"IMAGE_CONTEXT:\n{payload.image_context}\n")
+
+    acceptance = context.get("acceptance_criteria") or []
+    acceptance_body = "\n".join(
+        f"- {item.get('description')}" for item in acceptance if item.get("description")
+    )
+    if acceptance_body:
+        sections.append(f"ACCEPTANCE_CRITERIA:\n{acceptance_body}\n")
+
+    request_body = payload.request.strip() or "Execute the task using the provided context."
+    sections.append(f"REQUEST:\n{request_body}\n")
+
+    prompt = "\n".join(section.rstrip() for section in sections if section)
     return {"prompt": prompt}
 
 

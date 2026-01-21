@@ -144,7 +144,7 @@ def ensure_task(page: Page, task_title: str):
     page.wait_for_selector("#task-list", timeout=10000)
     task_item = page.locator("#task-list li", has_text=task_title)
     if task_item.count() == 0:
-        page.get_by_role("button", name="+ New Task").click()
+        page.get_by_role("button", name="New Task").click()
         expect(page.locator("#new-task-modal")).to_be_visible()
         page.fill("#new-task-title", task_title)
         page.fill("#new-task-desc", TASK_DESCRIPTION)
@@ -225,6 +225,17 @@ class TestBrowserHelloWorld:
         # Check for console errors
         assert not console_logs.has_errors(), f"Console errors: {console_logs.get_errors()}"
 
+    def test_03b_project_tooltip_hover(self, app_url, page: Page, project_name, workspace_name):
+        """Hovering a project shows the tooltip overlay."""
+        page.goto(app_url)
+        ensure_project(page, project_name, workspace_name)
+        project_item = page.locator("#project-list li", has_text=project_name).first
+        project_item.hover()
+
+        tooltip = page.locator("#global-tooltip")
+        expect(tooltip).to_be_visible()
+        take_screenshot(page, "03_project_tooltip")
+
     def test_04_create_task(self, app_url, page: Page, project_name, workspace_name, console_logs):
         """User creates a task to build animated hello world."""
         page.goto(app_url)
@@ -234,7 +245,7 @@ class TestBrowserHelloWorld:
         page.locator("#project-list li", has_text=project_name).click()
 
         # Click New Task button
-        page.get_by_role("button", name="+ New Task").click()
+        page.get_by_role("button", name="New Task").click()
 
         # Dialog should appear
         expect(page.locator("#new-task-modal")).to_be_visible()
