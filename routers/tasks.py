@@ -234,10 +234,6 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
         }
 
     prompt_payload = {
-        "node": {
-            "name": node.get("name"),
-            "prompt": node_prompt,
-        } if node_prompt else None,
         "project": {
             "name": project_info.get("name"),
             "workspace_path": project_info.get("workspace_path"),

@@ -1001,6 +1001,7 @@ function renderTasks() {
     const nodeLabel = t.node_name || (t.node_id ? `#${t.node_id}` : 'unknown');
     const tooltipRows = [
       { label: 'ID', value: t.id ?? '-' },
+      { label: 'Title', value: title },
       { label: 'Project', value: t.project_id ?? '-' },
       t.parent_id ? { label: 'Parent', value: `#${t.parent_id}` } : null,
       { label: 'Node', value: nodeLabel },
