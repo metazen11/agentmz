@@ -11,6 +11,11 @@ from alembic import context
 # Add parent directory to path for model imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from env_utils import load_env
+from database import get_database_url
+
+load_env()
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -27,12 +32,7 @@ target_metadata = Base.metadata
 
 # Get database URL from environment vars, always using 'agentic' database
 def get_url():
-    user = os.getenv("POSTGRES_USER", "wfhub")
-    password = os.getenv("POSTGRES_PASSWORD", "wfhub")
-    host = os.getenv("POSTGRES_HOST", "localhost")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    db = "agentic"  # Always use 'agentic' database for v2
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    return get_database_url()
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

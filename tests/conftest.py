@@ -22,6 +22,8 @@ from pathlib import Path
 
 # Add v2 to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from env_utils import load_env
+from database import get_database_url
 
 
 def pytest_configure(config):
@@ -90,7 +92,29 @@ def app_server(v2_dir, test_workspace):
 @pytest.fixture(scope="session")
 def app_url():
     """Return the app URL."""
-    return "http://localhost:8002"
+    return os.environ.get("APP_URL", "https://wfhub.localhost")
+
+
+def _db_name_from_url(url: str) -> str:
+    if not url:
+        return ""
+    tail = url.rsplit("/", 1)[-1]
+    return tail.split("?", 1)[0]
+
+
+@pytest.fixture(scope="session")
+def db_cleanup_allowed():
+    """Return True if it's safe to run destructive DB cleanup in tests."""
+    load_env()
+    url = os.getenv("DATABASE_URL") or get_database_url()
+    db_name = _db_name_from_url(url)
+    allow_flag = os.getenv("ALLOW_DB_CLEANUP") == "1"
+    is_test_db = (
+        db_name.startswith("test_")
+        or db_name.endswith("_test")
+        or db_name.endswith("_tests")
+    )
+    return allow_flag or is_test_db
 
 
 # Note: pytest-playwright provides page fixture automatically

@@ -34,7 +34,7 @@ import uuid
 import os
 import subprocess
 import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -81,10 +81,16 @@ class Config:
         self.aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:1.7b")
         self.agent_model = os.environ.get("AGENT_MODEL", "qwen3:1.7b")
         self.vision_model = os.environ.get("VISION_MODEL", "")
+        self.vision_model_regex = os.environ.get(
+            "VISION_MODEL_REGEX",
+            r"(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\\.5vl|qwen2-vl|qwen-vl|clip)",
+        )
         vision_models_raw = os.environ.get("VISION_MODELS", "")
         self.vision_models = [
             model.strip() for model in vision_models_raw.split(",") if model.strip()
         ]
+        self.vision_image_max_size = self._parse_int_env("VISION_IMAGE_MAX_SIZE", 640)
+        self.vision_max_tokens = self._parse_int_env("VISION_MAX_TOKENS", 120)
         self.max_iterations = int(os.environ.get("MAX_ITERATIONS", "20"))
         self.default_workspace = os.environ.get("DEFAULT_WORKSPACE", "poc")
         self.git_user_name = os.environ.get("GIT_USER_NAME", "Aider Agent")
@@ -112,11 +118,24 @@ class Config:
             "agent_model": self.agent_model,
             "vision_model": self.vision_model,
             "vision_models": self.vision_models,
+            "vision_model_regex": self.vision_model_regex,
+            "vision_image_max_size": self.vision_image_max_size,
+            "vision_max_tokens": self.vision_max_tokens,
             "max_iterations": self.max_iterations,
             "default_workspace": self.default_workspace,
             "current_workspace": self.current_workspace,
             "workspaces_dir": self.workspaces_dir,
         }
+
+    def _parse_int_env(self, key: str, default: int) -> int:
+        raw = os.environ.get(key)
+        if raw is None:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            return default
+        return value
 
     def list_workspaces(self):
         """List available workspaces."""
@@ -646,8 +665,17 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         if requested_model is not None and not isinstance(requested_model, str):
             return {"success": False, "error": "vision model must be a string"}
 
-        if requested_model and config.vision_models and requested_model not in config.vision_models:
-            return {"success": False, "error": f"vision model not allowed: {requested_model}"}
+        if requested_model:
+            if config.vision_models:
+                if requested_model not in config.vision_models:
+                    return {"success": False, "error": f"vision model not allowed: {requested_model}"}
+            else:
+                try:
+                    import re
+                    if not re.search(config.vision_model_regex, requested_model, re.IGNORECASE):
+                        return {"success": False, "error": f"vision model not allowed: {requested_model}"}
+                except re.error:
+                    return {"success": False, "error": "vision model regex invalid"}
 
         try:
             raw = base64.b64decode(b64_data)
@@ -1032,25 +1060,25 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         Returns:
             Complete system prompt string
         """
-        # Get workspace file listing for context
-        file_listing = self._get_workspace_files(workspace_path)
-
         try:
             from project_context import ProjectContext
 
             ctx = ProjectContext(workspace_path=workspace_path)
             ctx.load_all(project_id=project_id, task_id=task_id)
             base_prompt = ctx.build_system_prompt()
+            file_listing = self._get_workspace_files(workspace_path, key_files=ctx.key_files)
             # Append file listing to provide workspace context
-            return base_prompt + "\n\n" + file_listing
+            return base_prompt + ("\n\n" + file_listing if file_listing else "")
 
         except ImportError:
             print("[AGENT] Warning: project_context.py not available, using minimal prompt")
-            return self._minimal_system_prompt() + "\n\n" + file_listing
+            file_listing = self._get_workspace_files(workspace_path)
+            return self._minimal_system_prompt() + ("\n\n" + file_listing if file_listing else "")
 
         except Exception as e:
             print(f"[AGENT] Warning: Context build failed: {e}, using minimal prompt")
-            return self._minimal_system_prompt() + "\n\n" + file_listing
+            file_listing = self._get_workspace_files(workspace_path)
+            return self._minimal_system_prompt() + ("\n\n" + file_listing if file_listing else "")
 
     def _minimal_system_prompt(self) -> str:
         """Fallback minimal system prompt if ProjectContext fails."""
@@ -1084,49 +1112,44 @@ Paths:
 For simple tasks (create a file, write content), just do it directly.
 For complex tasks (modify existing code, find bugs), explore first to understand the codebase."""
 
-    def _get_workspace_files(self, workspace_path: str, max_depth: int = 2) -> str:
-        """Get a formatted list of files in the workspace for agent context.
+    def _get_workspace_files(self, workspace_path: str, key_files: list | None = None) -> str:
+        """Return a compact workspace overview for agent context."""
+        lines = ["## Workspace Overview"]
 
-        Args:
-            workspace_path: Absolute path to the workspace directory
-            max_depth: Maximum directory depth to traverse (default: 2)
-
-        Returns:
-            Formatted string listing workspace files
-        """
-        lines = ["## Workspace Files\n"]
+        try:
+            entries = sorted(os.listdir(workspace_path))
+        except OSError:
+            return "## Workspace Overview\n(unavailable)"
 
         # Directories to skip
-        skip_dirs = {'.git', 'node_modules', '__pycache__', 'venv', '.venv',
-                     'env', '.env', 'dist', 'build', '.pytest_cache', '.mypy_cache'}
+        skip_dirs = {".git", "node_modules", "__pycache__", "venv", ".venv",
+                     "env", ".env", "dist", "build", ".pytest_cache", ".mypy_cache"}
 
-        for root, dirs, files in os.walk(workspace_path):
-            # Skip hidden and common non-essential dirs
-            dirs[:] = [d for d in dirs if not d.startswith('.')
-                       and d not in skip_dirs]
+        dirs = []
+        files = []
+        for entry in entries:
+            full_path = os.path.join(workspace_path, entry)
+            if os.path.isdir(full_path):
+                if entry.startswith(".") or entry in skip_dirs:
+                    continue
+                dirs.append(entry)
+            elif os.path.isfile(full_path):
+                files.append(entry)
 
-            depth = root.replace(workspace_path, '').count(os.sep)
-            if depth >= max_depth:
-                dirs.clear()  # Don't go deeper
-                continue
+        max_items = 12
+        if dirs:
+            suffix = " ..." if len(dirs) > max_items else ""
+            lines.append(f"Top-level dirs: {', '.join(dirs[:max_items])}{suffix}")
+        if files:
+            suffix = " ..." if len(files) > max_items else ""
+            lines.append(f"Top-level files: {', '.join(files[:max_items])}{suffix}")
+        if key_files:
+            key_subset = [str(path) for path in key_files[:max_items]]
+            suffix = " ..." if len(key_files) > max_items else ""
+            lines.append(f"Key files: {', '.join(key_subset)}{suffix}")
 
-            indent = '  ' * depth
-            rel_path = os.path.relpath(root, workspace_path)
-
-            if rel_path != '.':
-                lines.append(f"{indent}{os.path.basename(root)}/")
-
-            # Sort files and limit per directory (include dotfiles, devs need to see config)
-            sorted_files = sorted(files)
-            for file in sorted_files[:20]:  # Limit files per dir
-                lines.append(f"{indent}  {file}")
-
-            # Stop if we've accumulated too many lines
-            if len(lines) >= 100:
-                lines.append("  ... (truncated)")
-                break
-
-        return '\n'.join(lines[:100])  # Cap total lines
+        lines.append("Hint: use glob/grep/read to explore further.")
+        return "\n".join(lines)
 
     def _clean_summary(self, summary: str) -> str:
         """Clean up agent summary for successful completions.
@@ -1495,7 +1518,7 @@ Workspace: {workspace}"""
 
 def main():
     port = int(os.environ.get("PORT", 8001))
-    server = HTTPServer(("0.0.0.0", port), AiderAPIHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), AiderAPIHandler)
     print(f"[AIDER-API] Starting on port {port}")
     print(f"[AIDER-API] Aider Model: {config.aider_model}")
     print(f"[AIDER-API] Agent Model: {config.agent_model}")

@@ -567,7 +567,7 @@ Example transformation:
 ```
 
 Vision capabilities are used for:
-- Screenshot analysis during QA/testing stages
+- Screenshot analysis during QA/testing nodes
 - UI verification and error detection
 - Enriching handoff context with image descriptions
 

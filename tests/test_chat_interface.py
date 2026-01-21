@@ -17,13 +17,28 @@ class TestChatInterfaceAPIs:
         return next(p for p in res.json() if p["name"] == "chat-test-project")
 
     @staticmethod
+    def _get_default_node_id():
+        res = requests.get(f"{MAIN_API}/nodes", timeout=REQUEST_TIMEOUT)
+        res.raise_for_status()
+        nodes = res.json()
+        if not nodes:
+            pytest.skip("No nodes configured")
+        dev = next((n for n in nodes if n.get("name") == "dev"), nodes[0])
+        return dev["id"]
+
+    @staticmethod
     def _create_task(project_id: int, title: str, description: str = ""):
+        node_id = TestChatInterfaceAPIs._get_default_node_id()
         res = requests.post(
             f"{MAIN_API}/tasks",
             json={
                 "project_id": project_id,
+                "node_id": node_id,
                 "title": title,
                 "description": description,
+                "acceptance_criteria": [
+                    {"description": "Task can be created", "passed": False, "author": "user"},
+                ],
             },
             timeout=REQUEST_TIMEOUT,
         )
@@ -126,16 +141,17 @@ class TestChatInterfaceAPIs:
         assert any(t["title"] == "Test task from chat" for t in tasks)
 
     def test_update_task(self):
-        """Update task title/description/status/stage."""
+        """Update task title/description/status/node."""
         project = self._get_test_project()
         task = self._create_task(project["id"], "Task to update", "Original description")
+        node_id = self._get_default_node_id()
         res = requests.patch(
             f"{MAIN_API}/tasks/{task['id']}",
             json={
                 "title": "Task updated",
                 "description": "Updated description",
                 "status": "in_progress",
-                "stage": "qa",
+                "node_id": node_id,
             },
             timeout=REQUEST_TIMEOUT,
         )
@@ -144,7 +160,7 @@ class TestChatInterfaceAPIs:
         assert data["title"] == "Task updated"
         assert data["description"] == "Updated description"
         assert data["status"] == "in_progress"
-        assert data["stage"] == "qa"
+        assert data["node_id"] == node_id
 
     def test_delete_task(self):
         """Delete a task."""

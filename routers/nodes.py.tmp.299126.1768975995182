@@ -1,0 +1,202 @@
+"""Routers for Task Node CRUD operations."""
+import json
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from datetime import datetime
+
+from database import get_db
+from models import Task, TaskNode
+
+router = APIRouter()
+
+
+class NodeCreate(BaseModel):
+    name: str
+    agent_prompt: str
+    pre_hooks: Optional[List[str]] = None
+    post_hooks: Optional[List[str]] = None
+    pass_node_id: Optional[int] = None
+    fail_node_id: Optional[int] = None
+    max_iterations: Optional[int] = 20
+
+
+class NodeUpdate(BaseModel):
+    name: Optional[str] = None
+    agent_prompt: Optional[str] = None
+    pre_hooks: Optional[List[str]] = None
+    post_hooks: Optional[List[str]] = None
+    pass_node_id: Optional[int] = None
+    fail_node_id: Optional[int] = None
+    max_iterations: Optional[int] = None
+
+
+class NodeResponse(BaseModel):
+    id: int
+    name: str
+    agent_prompt: str
+    pre_hooks: List[str]
+    post_hooks: List[str]
+    pass_node_id: Optional[int]
+    pass_node_name: Optional[str]
+    fail_node_id: Optional[int]
+    fail_node_name: Optional[str]
+    max_iterations: int
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+def get_node_or_404(node_id: int, db: Session) -> TaskNode:
+    node = db.query(TaskNode).filter(TaskNode.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return node
+
+
+def get_default_node(db: Session) -> TaskNode:
+    node = db.query(TaskNode).filter(TaskNode.name == "dev").first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Default node 'dev' not found")
+    return node
+
+
+@router.get("/nodes", response_model=List[NodeResponse])
+def list_nodes(db: Session = Depends(get_db)):
+    nodes = db.query(TaskNode).order_by(TaskNode.id.asc()).all()
+    return [node.to_dict() for node in nodes]
+
+
+@router.get("/nodes/{node_id}", response_model=NodeResponse)
+def get_node(node_id: int, db: Session = Depends(get_db)):
+    node = get_node_or_404(node_id, db)
+    return node.to_dict()
+
+
+def validate_routing(node_id: int, pass_node_id: Optional[int], fail_node_id: Optional[int], db: Session):
+    """Validate routing node IDs - prevent self-routing and verify targets exist."""
+    if pass_node_id is not None:
+        if pass_node_id == node_id:
+            raise HTTPException(status_code=400, detail="Node cannot route to itself on success")
+        if pass_node_id > 0:
+            target = db.query(TaskNode).filter(TaskNode.id == pass_node_id).first()
+            if not target:
+                raise HTTPException(status_code=400, detail=f"Pass node {pass_node_id} not found")
+
+    if fail_node_id is not None:
+        if fail_node_id == node_id:
+            raise HTTPException(status_code=400, detail="Node cannot route to itself on failure")
+        if fail_node_id > 0:
+            target = db.query(TaskNode).filter(TaskNode.id == fail_node_id).first()
+            if not target:
+                raise HTTPException(status_code=400, detail=f"Fail node {fail_node_id} not found")
+
+
+@router.post("/nodes", response_model=NodeResponse)
+def create_node(node: NodeCreate, db: Session = Depends(get_db)):
+    name = node.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Node name is required")
+    existing = db.query(TaskNode).filter(TaskNode.name == name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Node name already exists")
+
+    # Serialize hooks to JSON
+    pre_hooks_json = json.dumps(node.pre_hooks) if node.pre_hooks else None
+    post_hooks_json = json.dumps(node.post_hooks) if node.post_hooks else None
+
+    # Handle routing - 0 or negative means "no routing"
+    pass_node_id = node.pass_node_id if node.pass_node_id and node.pass_node_id > 0 else None
+    fail_node_id = node.fail_node_id if node.fail_node_id and node.fail_node_id > 0 else None
+
+    db_node = TaskNode(
+        name=name,
+        agent_prompt=node.agent_prompt,
+        pre_hooks=pre_hooks_json,
+        post_hooks=post_hooks_json,
+        pass_node_id=pass_node_id,
+        fail_node_id=fail_node_id,
+        max_iterations=node.max_iterations or 20,
+    )
+    db.add(db_node)
+    db.commit()
+    db.refresh(db_node)
+
+    # Validate routing after we have the node ID
+    if pass_node_id or fail_node_id:
+        validate_routing(db_node.id, pass_node_id, fail_node_id, db)
+
+    return db_node.to_dict()
+
+
+@router.patch("/nodes/{node_id}", response_model=NodeResponse)
+def update_node(node_id: int, update: NodeUpdate, db: Session = Depends(get_db)):
+    node = get_node_or_404(node_id, db)
+
+    # Check if any field is being updated
+    has_update = any([
+        update.name is not None,
+        update.agent_prompt is not None,
+        update.pre_hooks is not None,
+        update.post_hooks is not None,
+        update.pass_node_id is not None,
+        update.fail_node_id is not None,
+        update.max_iterations is not None,
+    ])
+    if not has_update:
+        raise HTTPException(status_code=400, detail="No updates provided")
+
+    # Validate routing before applying changes
+    pass_id = update.pass_node_id if update.pass_node_id is not None else node.pass_node_id
+    fail_id = update.fail_node_id if update.fail_node_id is not None else node.fail_node_id
+    # Handle 0 or negative as "clear routing"
+    if update.pass_node_id is not None and update.pass_node_id <= 0:
+        pass_id = None
+    if update.fail_node_id is not None and update.fail_node_id <= 0:
+        fail_id = None
+    validate_routing(node_id, pass_id, fail_id, db)
+
+    # Apply updates
+    if update.name is not None:
+        name = update.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Node name is required")
+        existing = db.query(TaskNode).filter(TaskNode.name == name, TaskNode.id != node_id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Node name already exists")
+        node.name = name
+
+    if update.agent_prompt is not None:
+        node.agent_prompt = update.agent_prompt
+
+    if update.pre_hooks is not None:
+        node.pre_hooks = json.dumps(update.pre_hooks) if update.pre_hooks else None
+
+    if update.post_hooks is not None:
+        node.post_hooks = json.dumps(update.post_hooks) if update.post_hooks else None
+
+    if update.pass_node_id is not None:
+        node.pass_node_id = pass_id
+
+    if update.fail_node_id is not None:
+        node.fail_node_id = fail_id
+
+    if update.max_iterations is not None:
+        node.max_iterations = update.max_iterations
+
+    db.commit()
+    db.refresh(node)
+    return node.to_dict()
+
+
+@router.delete("/nodes/{node_id}")
+def delete_node(node_id: int, db: Session = Depends(get_db)):
+    node = get_node_or_404(node_id, db)
+    task_count = db.query(Task).filter(Task.node_id == node_id).count()
+    if task_count > 0:
+        raise HTTPException(status_code=400, detail="Node is in use by tasks")
+    db.delete(node)
+    db.commit()
+    return {"deleted": True, "node_id": node_id}

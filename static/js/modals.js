@@ -59,7 +59,10 @@ export function showEditTaskModal(task) {
   state.editingTaskId = task.id;
   document.getElementById('edit-task-title').value = task.title || '';
   document.getElementById('edit-task-desc').value = task.description || '';
-  document.getElementById('edit-task-stage').value = task.stage || 'dev';
+  const nodeSelect = document.getElementById('edit-task-node');
+  if (nodeSelect) {
+    nodeSelect.value = task.node_id || '';
+  }
   document.getElementById('edit-task-status').value = task.status || 'backlog';
   document.getElementById('edit-task-modal').style.display = 'flex';
 }

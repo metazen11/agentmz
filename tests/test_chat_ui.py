@@ -1,14 +1,14 @@
 """Playwright tests for chat.html interface."""
 import re
 import pytest
-from playwright.sync_api import sync_playwright, expect
-import subprocess
+from playwright.sync_api import expect
 import time
-import signal
 import os
 import json
 import urllib.request
-import urllib.error
+
+
+APP_URL = os.environ.get("APP_URL", "https://wfhub.localhost")
 
 
 def _fetch_json(url, timeout=3):
@@ -80,42 +80,17 @@ def _pick_test_model(models, current):
     return ordered[0] if ordered else current
 
 
-@pytest.fixture(scope="module")
-def http_server():
-    """Start a simple HTTP server for chat.html."""
-    # Start server in background
-    proc = subprocess.Popen(
-        ["python", "-m", "http.server", "8080"],
-        cwd="/mnt/c/dropbox/_coding/agentic/v2",
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    time.sleep(1)  # Wait for server to start
-    yield proc
-    # Cleanup
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-
-
-@pytest.fixture(scope="module")
-def browser():
-    """Launch browser for tests."""
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        yield browser
-        browser.close()
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args):
+    """Allow local HTTPS certs for the running stack."""
+    return {**browser_context_args, "ignore_https_errors": True}
 
 
 class TestChatUI:
     """Test chat.html functionality."""
-
-    def test_page_loads(self, http_server, browser):
+    def test_page_loads(self, page):
         """Chat page should load without errors."""
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
 
         # Check title
         expect(page).to_have_title("Agentic v2 - Coding Agent")
@@ -126,18 +101,14 @@ class TestChatUI:
         expect(page.locator("#task-list")).to_be_visible()
         expect(page.locator("#messages")).to_be_visible()
         expect(page.locator("#prompt")).to_be_visible()
-
-        page.close()
-
-    def test_projects_load(self, http_server, browser):
+    def test_projects_load(self, page):
         """Projects should load from API."""
-        page = browser.new_page()
 
         # Listen for console errors
         errors = []
         page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
 
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
 
         # Wait for projects to load (either project items or "No projects yet")
         page.wait_for_timeout(2000)
@@ -153,13 +124,9 @@ class TestChatUI:
         # Print any errors for debugging
         if errors:
             print(f"Console errors: {errors}")
-
-        page.close()
-
-    def test_new_project_modal(self, http_server, browser):
+    def test_new_project_modal(self, page):
         """New project modal should open and close."""
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
         page.wait_for_timeout(1000)
 
         # Click new project button
@@ -172,27 +139,20 @@ class TestChatUI:
         # Cancel should close it
         page.click("#new-project-modal button.secondary")
         expect(modal).not_to_be_visible()
-
-        page.close()
-
-    def test_edit_project_modal_exists(self, http_server, browser):
+    def test_edit_project_modal_exists(self, page):
         """Edit project modal should exist."""
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
         page.wait_for_timeout(1000)
 
         expect(page.locator("#edit-project-modal")).to_be_hidden()
-        page.close()
-
-    def test_create_project(self, http_server, browser):
+    def test_create_project(self, page):
         """Should be able to create a new project."""
-        page = browser.new_page()
 
         # Listen for network requests
         requests = []
         page.on("request", lambda req: requests.append(req) if "projects" in req.url else None)
 
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
         page.wait_for_timeout(2000)
 
         # Open modal
@@ -216,13 +176,9 @@ class TestChatUI:
         # Modal should close
         modal = page.locator("#new-project-modal")
         expect(modal).not_to_be_visible()
-
-        page.close()
-
-    def test_status_shows_connection(self, http_server, browser):
+    def test_status_shows_connection(self, page):
         """Status should show connected when APIs are available."""
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
 
         # Wait for health check
         page.wait_for_function(
@@ -242,17 +198,12 @@ class TestChatUI:
             or "Healing" in status_text
         ), \
             f"Status should show connection info, got: {status_text}"
-
-        page.close()
-
-    def test_model_selector_populates(self, http_server, browser):
+    def test_model_selector_populates(self, page):
         """Model selector should populate from Ollama models list."""
         models = _get_models()
         if not models:
             pytest.skip("No models available from /api/models")
-
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
 
         page.wait_for_function(
             "() => {"
@@ -266,10 +217,7 @@ class TestChatUI:
         option_texts = options.all_inner_texts()
         assert len(option_texts) >= 1, "Model selector should have at least one option"
         assert "No models found" not in option_texts, "Model selector should not show empty state"
-
-        page.close()
-
-    def test_set_model_and_create_hello_world(self, http_server, browser):
+    def test_set_model_and_create_hello_world(self, page):
         """Select a model, set it, and create a hello world file."""
         models = _get_models()
         if not models:
@@ -287,10 +235,8 @@ class TestChatUI:
 
         if os.path.exists(target_file):
             os.remove(target_file)
-
-        page = browser.new_page()
         try:
-            page.goto("http://localhost:8080/chat.html")
+            page.goto(APP_URL)
 
             page.wait_for_function(
                 "() => {"
@@ -335,19 +281,13 @@ class TestChatUI:
                 _set_config({"agent_model": original_agent_model})
             if original_aider_model:
                 _set_config({"aider_model": original_aider_model})
-            page.close()
-
-    def test_heal_button_exists(self, http_server, browser):
+    def test_heal_button_exists(self, page):
         """Heal button should be available."""
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
         expect(page.locator("#heal-btn")).to_be_hidden()
-        page.close()
-
-    def test_logs_panel_exists(self, http_server, browser):
+    def test_logs_panel_exists(self, page):
         """Logs panel should exist with tabs."""
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
         page.wait_for_timeout(1000)
 
         # Check logs tabs exist
@@ -358,13 +298,9 @@ class TestChatUI:
 
         # Check logs content area exists
         expect(page.locator("#logs-content")).to_be_visible()
-
-        page.close()
-
-    def test_switch_log_tabs(self, http_server, browser):
+    def test_switch_log_tabs(self, page):
         """Should be able to switch between log tabs."""
-        page = browser.new_page()
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
         page.wait_for_timeout(2000)
 
         # Click aider tab
@@ -389,18 +325,14 @@ class TestChatUI:
         # Main tab should be active
         main_tab = page.locator("#tab-main")
         expect(main_tab).to_have_class(re.compile(r"active"))
-
-        page.close()
-
-    def test_send_message(self, http_server, browser):
+    def test_send_message(self, page):
         """Should be able to send a message."""
-        page = browser.new_page()
 
         # Track requests
         requests = []
         page.on("request", lambda req: requests.append(req.url))
 
-        page.goto("http://localhost:8080/chat.html")
+        page.goto(APP_URL)
         page.wait_for_timeout(2000)
 
         # Type a message
@@ -415,15 +347,13 @@ class TestChatUI:
         # Should have made request to aider API
         aider_requests = [
             r for r in requests
-            if "8001" in r and ("aider" in r or "agent/run" in r)
+            if "/aider/api/" in r or ("8001" in r and ("aider" in r or "agent/run" in r))
         ]
         assert len(aider_requests) > 0, f"Should have made aider request. Requests: {requests}"
 
         # Message should appear in chat
         messages = page.locator("#messages")
         expect(messages).to_contain_text("list files")
-
-        page.close()
 
 
 if __name__ == "__main__":

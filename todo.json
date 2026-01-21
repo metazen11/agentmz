@@ -1,47 +1,71 @@
 {
-  "updated": "2026-01-18",
+  "updated": "2026-01-19",
   "items": [
     {
-      "id": "secrets-01",
-      "title": "Remove tracked local config files and add templates",
+      "id": "integration-01",
+      "title": "External Task Integration: Database Schema",
       "status": "done",
-      "notes": "Untracked .env_bak.txt, .mcp.json, .claude/settings.local.json; added .env.example and .mcp.example.json."
+      "notes": "Created 4 tables (integration_providers, integration_credentials, project_integrations, task_external_links) via migration d4e5f6a7b8c9. Added INTEGRATION_ENCRYPTION_KEY to .env."
     },
     {
-      "id": "secrets-02",
-      "title": "Rotate any credentials exposed in local files",
+      "id": "integration-02",
+      "title": "External Task Integration: Provider Infrastructure",
       "status": "done",
-      "notes": "Rotated Postgres password in .env/.env_bak.txt/.mcp.json and updated the DB user password."
+      "notes": "Created integrations/ module with encryption.py (Fernet), providers/base.py (abstract TaskIntegrationProvider), and provider registry."
     },
     {
-      "id": "https-01",
-      "title": "Define HTTPS/local domain plan",
+      "id": "integration-03",
+      "title": "External Task Integration: Asana Provider",
       "status": "done",
-      "notes": "Plan: use *.localhost domains + Caddy reverse proxy with mkcert or Caddy internal CA; avoid hosts-file edits; document trust step."
+      "notes": "Implemented AsanaProvider with PAT auth, pagination, list_projects, list_tasks, get_task with subtasks/attachments, and bidirectional sync methods."
     },
     {
-      "id": "https-02",
-      "title": "Implement HTTPS reverse proxy",
+      "id": "integration-04",
+      "title": "External Task Integration: API Endpoints",
       "status": "done",
-      "notes": "Added Caddy service + Caddyfile for *.localhost routing and local certs."
+      "notes": "Added 8 endpoints to main.py: credential CRUD, project mapping, external project/task listing, and task import."
     },
     {
-      "id": "https-03",
-      "title": "Update app config and docs for HTTPS",
+      "id": "integration-05",
+      "title": "External Task Integration: UI Wizard",
       "status": "done",
-      "notes": "Updated chat.html, start.sh/install.sh, and README for HTTPS usage."
+      "notes": "Created static/js/integrations.js and static/css/integrations.css. Added 5-step import wizard modal to chat.html."
     },
     {
-      "id": "tests-01",
-      "title": "Fix Playwright strict locator failure",
+      "id": "integration-06",
+      "title": "External Task Integration: Tests",
       "status": "done",
-      "notes": "Updated Playwright UI test to new selectors and HTTPS target; added git-status stubbing."
+      "notes": "Created tests/test_integrations.py with 22 tests covering encryption, provider base, Asana provider (mocked), and models. 14 passed, 8 skipped (API tests need langchain)."
+    },
+    {
+      "id": "integration-future-01",
+      "title": "Implement Jira Provider",
+      "status": "todo",
+      "notes": "Extend TaskIntegrationProvider for Jira REST API (API token + email auth)."
+    },
+    {
+      "id": "integration-future-02",
+      "title": "Implement Linear Provider",
+      "status": "todo",
+      "notes": "Extend TaskIntegrationProvider for Linear GraphQL API."
+    },
+    {
+      "id": "integration-future-03",
+      "title": "Implement GitHub Issues Provider",
+      "status": "todo",
+      "notes": "Extend TaskIntegrationProvider for GitHub Issues API (PAT auth, labels to nodes mapping)."
+    },
+    {
+      "id": "integration-future-04",
+      "title": "Bidirectional Sync Job",
+      "status": "todo",
+      "notes": "Periodic job to push status changes back to external providers using update_task_status()."
     },
     {
       "id": "tests-02",
       "title": "Re-run full test suite",
       "status": "todo",
-      "notes": "pytest tests/ -v after updates."
+      "notes": "pytest tests/ -v after all updates."
     }
   ]
 }

@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/static/css/chat.css">
 <link rel="stylesheet" href="/static/css/logs.css">
 <link rel="stylesheet" href="/static/css/forms.css">
+<link rel="stylesheet" href="/static/css/integrations.css">
 </head>
 <body>
 <div class="container">
@@ -20,17 +21,22 @@
   <div class="main-layout">
     <!-- Sidebar: Projects and Tasks -->
     <div class="sidebar">
-      <h3>Projects</h3>
+      <div class="sidebar-section-header">
+        <h3>Projects</h3>
+        <button class="btn-small" onclick="showNewProjectModal()">+ New Project</button>
+      </div>
       <ul class="project-list" id="project-list">
         <li>Loading...</li>
       </ul>
-      <button class="btn-small" onclick="showNewProjectModal()">+ New Project</button>
 
-      <h3 style="margin-top: 20px;">Tasks</h3>
+      <div class="sidebar-section-header spaced">
+        <h3>Tasks</h3>
+        <button class="btn-small" onclick="showNewTaskModal()" aria-label="New Task" title="New Task">New</button>
+        <button class="btn-small" onclick="showIntegrationWizard()" aria-label="Import Tasks" title="Import Tasks">Import</button>
+      </div>
       <ul class="task-list" id="task-list">
         <li style="color: #666;">Select a project</li>
       </ul>
-      <button class="btn-small" onclick="showNewTaskModal()">+ New Task</button>
 
       <div class="file-tree" id="file-tree">
         <div class="file-tree-header">
@@ -102,6 +108,10 @@
   </div>
 </div>
 
+<div id="tooltip-layer" class="tooltip-layer">
+  <div id="global-tooltip" class="tooltip"></div>
+</div>
+
 <!-- New Project Modal -->
 <div id="new-project-modal" class="modal" style="display:none;">
   <div class="modal-content">
@@ -140,6 +150,29 @@
     <h3>New Task</h3>
     <input type="text" id="new-task-title" placeholder="Task title">
     <textarea id="new-task-desc" placeholder="Description (optional)"></textarea>
+    <label style="font-size:12px; color:#aaa; margin-top:8px;">Parent Task (optional)</label>
+    <select id="new-task-parent-id">
+      <option value="">No parent</option>
+    </select>
+    <label style="font-size:12px; color:#aaa; margin-top:8px;">Node</label>
+    <select id="new-task-node">
+      <option value="">Loading...</option>
+    </select>
+    <label style="font-size:12px; color:#aaa; margin-top:8px;">Status</label>
+    <select id="new-task-status">
+      <option value="backlog">backlog</option>
+      <option value="in_progress">in_progress</option>
+      <option value="done">done</option>
+      <option value="failed">failed</option>
+    </select>
+    <div class="details-panel">
+      <div class="details-title">Acceptance Criteria</div>
+      <div id="new-task-criteria-list" class="criteria-list">No criteria</div>
+      <input type="text" id="new-criteria-desc" placeholder="Add acceptance criteria">
+      <div class="comment-actions">
+        <button onclick="addNewTaskCriteria()">Add Criteria</button>
+      </div>
+    </div>
     <div class="modal-actions">
       <button onclick="createTask()">Create</button>
       <button class="secondary" onclick="hideModals()">Cancel</button>
@@ -149,16 +182,20 @@
 
 <!-- Edit Task Modal -->
 <div id="edit-task-modal" class="modal" style="display:none;">
-  <div class="modal-content">
-    <h3>Edit Task</h3>
+  <div class="modal-content task-modal-content">
+    <div class="modal-header">
+      <h3>Edit Task</h3>
+      <button class="btn-small secondary" onclick="hideModals()" aria-label="Close">×</button>
+    </div>
     <input type="text" id="edit-task-title" placeholder="Task title">
     <textarea id="edit-task-desc" placeholder="Description (optional)"></textarea>
-    <label style="font-size:12px; color:#aaa; margin-top:8px;">Stage</label>
-    <select id="edit-task-stage">
-      <option value="dev">dev</option>
-      <option value="qa">qa</option>
-      <option value="review">review</option>
-      <option value="complete">complete</option>
+    <div id="edit-task-parent-row" class="task-parent-row" style="display:none;">
+      Parent: <a href="#" id="edit-task-parent-link"></a>
+    </div>
+    <button class="btn-small" onclick="createSubtask(getEditingTaskId())">+ Add Subtask</button>
+    <label style="font-size:12px; color:#aaa; margin-top:8px;">Node</label>
+    <select id="edit-task-node">
+      <option value="">Loading...</option>
     </select>
     <label style="font-size:12px; color:#aaa; margin-top:8px;">Status</label>
     <select id="edit-task-status">
@@ -167,10 +204,62 @@
       <option value="done">done</option>
       <option value="failed">failed</option>
     </select>
+
+    <div class="details-panel">
+      <div class="details-title">Acceptance Criteria</div>
+      <div id="task-criteria-list" class="criteria-list">No criteria</div>
+      <input type="text" id="criteria-desc" placeholder="Add acceptance criteria">
+      <input type="text" id="criteria-author" placeholder="Author (optional)">
+      <div class="comment-actions">
+        <button onclick="addAcceptanceCriteria()">Add Criteria</button>
+      </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title">Comments</div>
+      <div id="task-comments-list" class="comment-list">No comments</div>
+      <input type="text" id="comment-author" placeholder="Author (optional)">
+      <textarea id="comment-body" placeholder="Add a comment"></textarea>
+      <input type="hidden" id="comment-id">
+      <div class="comment-actions">
+        <button onclick="saveTaskComment()">Save Comment</button>
+        <button class="secondary" onclick="resetCommentForm()">Cancel</button>
+      </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title">Attachments</div>
+      <div id="task-attachments-list" class="attachment-list">No attachments</div>
+      <input type="file" id="attachment-file">
+      <input type="text" id="attachment-uploaded-by" placeholder="Uploaded by (optional)">
+      <select id="attachment-comment-id">
+        <option value="">Attach to task</option>
+      </select>
+      <div class="comment-actions">
+        <button onclick="uploadTaskAttachment()">Upload</button>
+      </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title">Run Preview</div>
+      <textarea id="task-run-preview" class="preview-textarea" readonly
+                placeholder="Build prompt to preview the run context"></textarea>
+      <div class="comment-actions">
+        <button onclick="buildTaskPromptPreview()">Build Prompt</button>
+      </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title">Runs</div>
+      <div id="task-runs-list" class="run-list">No runs yet</div>
+    </div>
+
     <div class="modal-actions">
       <button onclick="updateTask()">Save</button>
       <button class="delete" onclick="deleteTask(getEditingTaskId())">Delete</button>
       <button class="secondary" onclick="hideModals()">Cancel</button>
+      <button id="edit-task-run-btn" class="secondary run-task-btn"
+              onclick="runTaskFromModal(getEditingTaskId())">Run</button>
     </div>
   </div>
 </div>
@@ -223,21 +312,64 @@
 
 <!-- Settings Modal -->
 <div id="settings-modal" class="modal" style="display:none;">
+  <div class="modal-content" style="min-width: 600px;">
+    <div class="modal-header">
+      <h3>Settings</h3>
+      <button class="secondary" onclick="hideSettingsModal()" style="padding: 4px 10px;">×</button>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="settings-tabs">
+      <button class="settings-tab active" onclick="switchSettingsTab('env')" data-tab="env">Environment</button>
+      <button class="settings-tab" onclick="switchSettingsTab('nodes')" data-tab="nodes">Nodes</button>
+    </div>
+
+    <!-- Environment Tab Content -->
+    <div id="settings-tab-env" class="settings-tab-content active">
+      <div class="settings-modal-grid">
+        <input id="settings-filter" type="text" placeholder="Filter settings...">
+        <div class="settings-list" id="settings-list">Loading...</div>
+        <div class="git-row">
+          <label><input type="checkbox" id="restart-main" checked> Restart main</label>
+          <label><input type="checkbox" id="restart-aider" checked> Restart aider</label>
+          <label><input type="checkbox" id="restart-ollama"> Restart ollama</label>
+          <label><input type="checkbox" id="restart-db"> Restart db</label>
+        </div>
+        <div class="modal-actions">
+          <button onclick="applySettings()">Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nodes Tab Content -->
+    <div id="settings-tab-nodes" class="settings-tab-content">
+      <div class="node-editor-grid">
+        <!-- Node List (Left Panel) -->
+        <div class="node-list-container">
+          <div class="node-list" id="node-list">Loading...</div>
+          <button class="node-add-btn" onclick="createNewNode()">+ New Node</button>
+        </div>
+
+        <!-- Node Editor (Right Panel) -->
+        <div id="node-editor-panel">
+          <div class="node-editor-placeholder">Select a node to edit</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Integration Wizard Modal -->
+<div id="integration-modal" class="modal" style="display:none;">
   <div class="modal-content">
-    <h3>Settings (.env)</h3>
-    <div class="settings-modal-grid">
-      <input id="settings-filter" type="text" placeholder="Filter settings...">
-      <div class="settings-list" id="settings-list">Loading...</div>
-      <div class="git-row">
-        <label><input type="checkbox" id="restart-main" checked> Restart main</label>
-        <label><input type="checkbox" id="restart-aider" checked> Restart aider</label>
-        <label><input type="checkbox" id="restart-ollama"> Restart ollama</label>
-        <label><input type="checkbox" id="restart-db"> Restart db</label>
-      </div>
-      <div class="modal-actions">
-        <button onclick="applySettings()">Apply</button>
-        <button class="secondary" onclick="hideSettingsModal()">Close</button>
-      </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0;">Import External Tasks</h3>
+      <button class="btn-small secondary" onclick="window.integrationModule.hideIntegrationWizard()">×</button>
+    </div>
+    <div id="integration-error"></div>
+    <div id="integration-content">
+      <p>Loading...</p>
     </div>
   </div>
 </div>
@@ -251,7 +383,8 @@ import { COOKIE_KEYS, setCookie, getCookie, deleteCookie, getWorkspaceName, getD
 import { renderMarkdown } from '/static/js/markdown.js';
 import { getResizedImageBase64 } from '/static/js/images.js';
 import { highlightJson, getToolCallSummary, renderToolCalls } from '/static/js/tools.js';
-import { state, setProjects, setTasks, setSelectedProject, setSelectedTask, setAvailableModels, setIsModelSwitching, setReferencedFiles, setAttachedImages, setEnvEntries, setEditingProjectId, setEditingTaskId, setCurrentLogTab, setVisionModel } from '/static/js/state.js';
+import { state, setProjects, setTasks, setSelectedProject, setSelectedTask, setAvailableModels, setIsModelSwitching, setReferencedFiles, setAttachedImages, setEnvEntries, setEditingProjectId, setEditingTaskId, setCurrentLogTab, setVisionModel, setCurrentSettingsTab, setNodes, setSelectedNodeId } from '/static/js/state.js';
+import { showIntegrationWizard, hideIntegrationWizard } from '/static/js/integrations.js';
 
 // ============================================================================
 // DOM elements (local refs for performance - also available via dom.*)
@@ -286,6 +419,26 @@ const restartMainEl = document.getElementById('restart-main');
 const restartAiderEl = document.getElementById('restart-aider');
 const restartOllamaEl = document.getElementById('restart-ollama');
 const restartDbEl = document.getElementById('restart-db');
+const taskCommentsListEl = document.getElementById('task-comments-list');
+const commentAuthorEl = document.getElementById('comment-author');
+const commentBodyEl = document.getElementById('comment-body');
+const commentIdEl = document.getElementById('comment-id');
+const taskAttachmentsListEl = document.getElementById('task-attachments-list');
+const attachmentFileEl = document.getElementById('attachment-file');
+const attachmentUploadedByEl = document.getElementById('attachment-uploaded-by');
+const attachmentCommentIdEl = document.getElementById('attachment-comment-id');
+const taskRunPreviewEl = document.getElementById('task-run-preview');
+const taskRunsListEl = document.getElementById('task-runs-list');
+const newTaskParentSelectEl = document.getElementById('new-task-parent-id');
+const editTaskParentRowEl = document.getElementById('edit-task-parent-row');
+const editTaskParentLinkEl = document.getElementById('edit-task-parent-link');
+const criteriaListEl = document.getElementById('task-criteria-list');
+const criteriaDescEl = document.getElementById('criteria-desc');
+const criteriaAuthorEl = document.getElementById('criteria-author');
+const newTaskCriteriaListEl = document.getElementById('new-task-criteria-list');
+const newTaskCriteriaDescEl = document.getElementById('new-criteria-desc');
+const newTaskNodeSelectEl = document.getElementById('new-task-node');
+const editTaskNodeSelectEl = document.getElementById('edit-task-node');
 
 // ============================================================================
 // Local state aliases (getter shortcuts to state module)
@@ -302,6 +455,119 @@ const getEnvEntries = () => state.envEntries;
 const getEditingProjectId = () => state.editingProjectId;
 const getEditingTaskId = () => state.editingTaskId;
 const getCurrentLogTab = () => state.currentLogTab;
+
+let taskComments = [];
+let taskAttachments = [];
+let taskRuns = [];
+let editingCommentId = null;
+let visionImageMaxSize = 640;
+let visionModelRegex = null;
+let pendingParentTaskId = null;
+let taskCriteria = [];
+let newTaskCriteria = [];
+let availableNodes = [];
+
+function formatDate(value) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+
+function truncateText(value, maxLength = 800) {
+  if (!value) return '';
+  return value;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderTooltip(rows) {
+  const items = rows.filter(Boolean).map(row => `
+    <div class="tooltip-row">
+      <span class="tooltip-label">${escapeHtml(row.label)}</span>
+      <span class="tooltip-value">${escapeHtml(row.value)}</span>
+    </div>
+  `).join('');
+  return `<div class="tooltip tooltip-source">${items}</div>`;
+}
+
+function wireTooltipHandlers(container) {
+  if (!container) return;
+  const globalTooltipEl = document.getElementById('global-tooltip');
+  if (!globalTooltipEl) return;
+  container.querySelectorAll('.has-tooltip').forEach(item => {
+    const tooltip = item.querySelector('.tooltip');
+    if (!tooltip) return;
+    item.addEventListener('mouseenter', () => {
+      globalTooltipEl.innerHTML = tooltip.innerHTML;
+      positionTooltip(item, globalTooltipEl);
+      globalTooltipEl.classList.add('visible');
+    });
+    item.addEventListener('mouseleave', () => {
+      globalTooltipEl.classList.remove('visible');
+    });
+  });
+}
+
+function positionTooltip(item, tooltip) {
+  const itemRect = item.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const padding = 12;
+  const left = Math.min(
+    itemRect.right + padding,
+    window.innerWidth - tooltipRect.width - padding
+  );
+  const top = Math.min(
+    itemRect.top,
+    window.innerHeight - tooltipRect.height - padding
+  );
+  tooltip.style.left = `${Math.max(padding, left)}px`;
+  tooltip.style.top = `${Math.max(padding, top)}px`;
+}
+
+function flattenTasks(taskList, depth = 0, out = []) {
+  taskList.forEach(task => {
+    out.push({ id: task.id, title: task.title || `Task ${task.id}`, depth });
+    if (Array.isArray(task.children) && task.children.length > 0) {
+      flattenTasks(task.children, depth + 1, out);
+    }
+  });
+  return out;
+}
+
+function populateParentTaskOptions(selectedId = null) {
+  if (!newTaskParentSelectEl) return;
+  const tasks = flattenTasks(state.tasks);
+  const options = ['<option value="">No parent</option>'];
+  tasks.forEach(task => {
+    const prefix = task.depth > 0 ? `${'-'.repeat(task.depth * 2)} ` : '';
+    options.push(`<option value="${task.id}">${prefix}#${task.id} ${escapeHtml(task.title)}</option>`);
+  });
+  newTaskParentSelectEl.innerHTML = options.join('');
+  if (selectedId) {
+    newTaskParentSelectEl.value = String(selectedId);
+  }
+}
+
+function isLikelyVisionModel(model) {
+  if (!model) return false;
+  if (visionModelRegex) {
+    try {
+      const regex = new RegExp(visionModelRegex, 'i');
+      return regex.test(model);
+    } catch (err) {
+      return false;
+    }
+  }
+  return /(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\\.5vl|qwen2-vl|qwen-vl|clip)/i.test(model);
+}
 
 async function restoreSelectionsFromCookies() {
   // Restore project selection
@@ -339,6 +605,7 @@ async function init() {
   await runFullHealthCheck(true);
   await checkHealth();
   await loadModels();
+  await loadNodes();
   await loadProjects();
   setupImageDropzone();
   // Restore project and model selections from cookies (or fall back to first project)
@@ -424,6 +691,8 @@ async function loadModels() {
       visionAllowlist = Array.isArray(configData.config?.vision_models)
         ? configData.config.vision_models
         : [];
+      visionImageMaxSize = parseInt(configData.config?.vision_image_max_size, 10) || visionImageMaxSize;
+      visionModelRegex = configData.config?.vision_model_regex || visionModelRegex;
     }
 
     if (!models.length) {
@@ -436,6 +705,9 @@ async function loadModels() {
       return;
     }
 
+    if (currentAgentModel && models.includes(currentAgentModel)) {
+      models = [currentAgentModel, ...models.filter(model => model !== currentAgentModel)];
+    }
     setAvailableModels(models);
     modelSelectEl.innerHTML = models.map(model => (
       `<option value="${model}">${model}</option>`
@@ -450,7 +722,7 @@ async function loadModels() {
     if (visionModelSelectEl) {
       const visionModels = visionAllowlist.length
         ? models.filter(model => visionAllowlist.includes(model))
-        : models.slice();
+        : models.filter(model => isLikelyVisionModel(model));
 
       if (!visionModels.length) {
         visionModelSelectEl.innerHTML = '<option value="">No vision models found</option>';
@@ -481,6 +753,46 @@ async function loadModels() {
       visionModelSelectEl.disabled = true;
       setVisionModel('');
     }
+  }
+}
+
+function getDefaultNodeId() {
+  const node = availableNodes.find(item => item.name === 'dev') || availableNodes[0];
+  return node ? String(node.id) : '';
+}
+
+function renderNodeOptions(selectedId = '') {
+  if (newTaskNodeSelectEl) {
+    const options = availableNodes.map(node => (
+      `<option value="${node.id}">${escapeHtml(node.name)}</option>`
+    ));
+    newTaskNodeSelectEl.innerHTML = options.join('') || '<option value="">No nodes</option>';
+    newTaskNodeSelectEl.value = selectedId || getDefaultNodeId();
+  }
+  if (editTaskNodeSelectEl) {
+    const options = availableNodes.map(node => (
+      `<option value="${node.id}">${escapeHtml(node.name)}</option>`
+    ));
+    editTaskNodeSelectEl.innerHTML = options.join('') || '<option value="">No nodes</option>';
+    if (selectedId) {
+      editTaskNodeSelectEl.value = selectedId;
+    }
+  }
+}
+
+async function loadNodes() {
+  try {
+    const res = await fetch(`${MAIN_API}/nodes`);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const nodeList = await res.json();
+    availableNodes = Array.isArray(nodeList) ? nodeList : [];
+    renderNodeOptions();
+  } catch (err) {
+    console.warn('Failed to load nodes:', err.message);
+    availableNodes = [];
+    renderNodeOptions();
   }
 }
 
@@ -602,20 +914,31 @@ function renderProjects() {
     return;
   }
   projectListEl.innerHTML = state.projects.map(p => `
-    <li class="${state.selectedProject?.id === p.id ? 'selected' : ''}"
+    <li class="${state.selectedProject?.id === p.id ? 'selected' : ''} has-tooltip"
         onclick="selectProject(${p.id})">
       <div class="project-row">
-        <span class="project-title">${p.name}</span>
+        <span class="project-title">${escapeHtml(p.name || 'Untitled project')}</span>
         <div class="project-actions">
           <button onclick="event.stopPropagation(); showEditProjectModal(${p.id})">Edit</button>
           <button class="delete" onclick="event.stopPropagation(); deleteProject(${p.id})">Delete</button>
         </div>
       </div>
+      ${renderTooltip([
+        { label: 'ID', value: p.id ?? '-' },
+        { label: 'Workspace', value: p.workspace_path || '-' },
+        { label: 'Environment', value: p.environment || '-' },
+        { label: 'Created', value: formatDate(p.created_at) }
+      ])}
     </li>
   `).join('');
+  wireTooltipHandlers(projectListEl);
 }
 
 async function selectProject(projectId) {
+  // Hide tooltip when selecting project
+  const globalTooltipEl = document.getElementById('global-tooltip');
+  if (globalTooltipEl) globalTooltipEl.classList.remove('visible');
+
   console.log('selectProject called with:', projectId);
   const project = state.projects.find(p => p.id === projectId);
   if (!project) {
@@ -661,6 +984,7 @@ async function loadTasks(projectId) {
     const taskList = await res.json();
     setTasks(taskList);
     renderTasks();
+    populateParentTaskOptions();
   } catch (err) {
     taskListEl.innerHTML = '<li style="color: #ff6b6b;">Failed to load</li>';
   }
@@ -673,19 +997,32 @@ function renderTasks() {
   }
   taskListEl.innerHTML = state.tasks.map(t => {
     const title = t.title || 'Untitled task';
-    const stage = t.stage || 'dev';
     const status = t.status || 'backlog';
+    const nodeLabel = t.node_name || (t.node_id ? `#${t.node_id}` : 'unknown');
+    const tooltipRows = [
+      { label: 'ID', value: t.id ?? '-' },
+      { label: 'Project', value: t.project_id ?? '-' },
+      t.parent_id ? { label: 'Parent', value: `#${t.parent_id}` } : null,
+      { label: 'Node', value: nodeLabel },
+      { label: 'Status', value: status },
+      { label: 'Created', value: formatDate(t.created_at) }
+    ];
     return `
-    <li class="${state.selectedTask?.id === t.id ? 'selected' : ''}"
+    <li class="${state.selectedTask?.id === t.id ? 'selected' : ''} has-tooltip"
         onclick="openTaskEditor(${t.id})">
       <div class="task-row">
-        <span class="task-title" title="${title}">${title}</span>
-        <span class="task-stage ${stage}">${stage}</span>
-        <span class="task-status ${status}">${status}</span>
+        <span class="task-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+        <div class="task-actions">
+          <button onclick="event.stopPropagation(); openTaskEditor(${t.id})">Edit</button>
+          <button class="delete" onclick="event.stopPropagation(); deleteTask(${t.id})">Delete</button>
+          <button onclick="event.stopPropagation(); runTaskFromList(${t.id})">Run</button>
+        </div>
       </div>
+      ${renderTooltip(tooltipRows)}
     </li>
   `;
   }).join('');
+  wireTooltipHandlers(taskListEl);
 }
 
 function selectTask(taskId) {
@@ -698,6 +1035,10 @@ function selectTask(taskId) {
 }
 
 function openTaskEditor(taskId) {
+  // Hide tooltip when opening editor
+  const globalTooltipEl = document.getElementById('global-tooltip');
+  if (globalTooltipEl) globalTooltipEl.classList.remove('visible');
+
   selectTask(taskId);
   showEditTaskModal(taskId);
 }
@@ -1091,6 +1432,329 @@ function hideSettingsModal() {
   document.getElementById('settings-modal').style.display = 'none';
 }
 
+// ============================================================================
+// Node Editor Functions
+// ============================================================================
+
+function switchSettingsTab(tab) {
+  // Update tab buttons
+  document.querySelectorAll('.settings-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Update tab content visibility
+  document.getElementById('settings-tab-env').classList.toggle('active', tab === 'env');
+  document.getElementById('settings-tab-nodes').classList.toggle('active', tab === 'nodes');
+
+  // Update state
+  setCurrentSettingsTab(tab);
+
+  // Load data for the active tab
+  if (tab === 'nodes') {
+    loadNodesForEditor();
+  }
+}
+
+async function loadNodesForEditor() {
+  const nodeListEl = document.getElementById('node-list');
+  nodeListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/nodes`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const nodes = await res.json();
+    setNodes(nodes);
+    renderNodeList();
+  } catch (err) {
+    nodeListEl.textContent = `Failed to load nodes: ${err.message}`;
+  }
+}
+
+function renderNodeList() {
+  const nodeListEl = document.getElementById('node-list');
+  if (!state.nodes || state.nodes.length === 0) {
+    nodeListEl.innerHTML = '<div style="color: #6b7280; padding: 8px;">No nodes</div>';
+    return;
+  }
+  nodeListEl.innerHTML = state.nodes.map(node => {
+    const isSelected = state.selectedNodeId === node.id;
+    const hasRouting = node.pass_node_id || node.fail_node_id;
+    return `
+      <div class="node-list-item ${isSelected ? 'selected' : ''}"
+           onclick="selectNode(${node.id})">
+        <span>${node.name}</span>
+        ${hasRouting ? '<span class="routing-indicator">→</span>' : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function selectNode(nodeId) {
+  setSelectedNodeId(nodeId);
+  renderNodeList();
+  renderNodeEditor();
+}
+
+function renderNodeEditor() {
+  const panelEl = document.getElementById('node-editor-panel');
+  const node = state.nodes.find(n => n.id === state.selectedNodeId);
+
+  if (!node) {
+    panelEl.innerHTML = '<div class="node-editor-placeholder">Select a node to edit</div>';
+    return;
+  }
+
+  // Build routing dropdowns (exclude current node)
+  const routingOptions = state.nodes
+    .filter(n => n.id !== node.id)
+    .map(n => `<option value="${n.id}">${n.name}</option>`)
+    .join('');
+
+  panelEl.innerHTML = `
+    <form class="node-editor-form" onsubmit="saveNode(event)">
+      <div class="node-form-row">
+        <label for="node-name">Name</label>
+        <input type="text" id="node-name" value="${escapeHtml(node.name)}" required>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-prompt">Agent Prompt</label>
+        <textarea id="node-prompt" rows="6">${escapeHtml(node.agent_prompt)}</textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-pre-hooks">Pre Hooks (one per line)</label>
+        <textarea id="node-pre-hooks" rows="3" placeholder="npm install&#10;./setup.sh">${(node.pre_hooks || []).join('\n')}</textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-post-hooks">Post Hooks (one per line)</label>
+        <textarea id="node-post-hooks" rows="3" placeholder="npm test&#10;./cleanup.sh">${(node.post_hooks || []).join('\n')}</textarea>
+      </div>
+
+      <div class="node-form-row-inline">
+        <div class="node-form-row">
+          <label for="node-pass">On Success</label>
+          <select id="node-pass">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+        <div class="node-form-row">
+          <label for="node-fail">On Failure</label>
+          <select id="node-fail">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-max-iter">Max Iterations</label>
+        <input type="number" id="node-max-iter" min="1" max="100" value="${node.max_iterations || 20}">
+      </div>
+
+      <div class="node-form-actions">
+        <button type="submit">Save</button>
+        <button type="button" class="secondary" onclick="cancelNodeEdit()">Cancel</button>
+        <button type="button" class="secondary delete" onclick="deleteNode(${node.id})">Delete</button>
+      </div>
+    </form>
+  `;
+
+  // Set dropdown values after rendering
+  document.getElementById('node-pass').value = node.pass_node_id || '';
+  document.getElementById('node-fail').value = node.fail_node_id || '';
+}
+
+function createNewNode() {
+  setSelectedNodeId(null);
+  renderNodeList();
+
+  const panelEl = document.getElementById('node-editor-panel');
+  const routingOptions = state.nodes
+    .map(n => `<option value="${n.id}">${n.name}</option>`)
+    .join('');
+
+  panelEl.innerHTML = `
+    <form class="node-editor-form" onsubmit="saveNewNode(event)">
+      <div class="node-form-row">
+        <label for="node-name">Name</label>
+        <input type="text" id="node-name" value="" placeholder="new_node" required>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-prompt">Agent Prompt</label>
+        <textarea id="node-prompt" rows="6" placeholder="You are an agent that..."></textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-pre-hooks">Pre Hooks (one per line)</label>
+        <textarea id="node-pre-hooks" rows="3" placeholder="npm install&#10;./setup.sh"></textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-post-hooks">Post Hooks (one per line)</label>
+        <textarea id="node-post-hooks" rows="3" placeholder="npm test&#10;./cleanup.sh"></textarea>
+      </div>
+
+      <div class="node-form-row-inline">
+        <div class="node-form-row">
+          <label for="node-pass">On Success</label>
+          <select id="node-pass">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+        <div class="node-form-row">
+          <label for="node-fail">On Failure</label>
+          <select id="node-fail">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-max-iter">Max Iterations</label>
+        <input type="number" id="node-max-iter" min="1" max="100" value="20">
+      </div>
+
+      <div class="node-form-actions">
+        <button type="submit">Create</button>
+        <button type="button" class="secondary" onclick="cancelNodeEdit()">Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
+function cancelNodeEdit() {
+  setSelectedNodeId(null);
+  renderNodeList();
+  document.getElementById('node-editor-panel').innerHTML =
+    '<div class="node-editor-placeholder">Select a node to edit</div>';
+}
+
+function parseHooks(text) {
+  return text.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+}
+
+async function saveNode(event) {
+  event.preventDefault();
+
+  const nodeId = state.selectedNodeId;
+  if (!nodeId) return;
+
+  const name = document.getElementById('node-name').value.trim();
+  const agentPrompt = document.getElementById('node-prompt').value;
+  const preHooks = parseHooks(document.getElementById('node-pre-hooks').value);
+  const postHooks = parseHooks(document.getElementById('node-post-hooks').value);
+  const passNodeId = parseInt(document.getElementById('node-pass').value) || 0;
+  const failNodeId = parseInt(document.getElementById('node-fail').value) || 0;
+  const maxIterations = parseInt(document.getElementById('node-max-iter').value) || 20;
+
+  try {
+    const res = await fetch(`${MAIN_API}/nodes/${nodeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        agent_prompt: agentPrompt,
+        pre_hooks: preHooks,
+        post_hooks: postHooks,
+        pass_node_id: passNodeId,
+        fail_node_id: failNodeId,
+        max_iterations: maxIterations,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error: ${data.detail || 'Failed to save node'}`);
+      return;
+    }
+
+    await loadNodes();
+    selectNode(nodeId);
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function saveNewNode(event) {
+  event.preventDefault();
+
+  const name = document.getElementById('node-name').value.trim();
+  const agentPrompt = document.getElementById('node-prompt').value;
+  const preHooks = parseHooks(document.getElementById('node-pre-hooks').value);
+  const postHooks = parseHooks(document.getElementById('node-post-hooks').value);
+  const passNodeId = parseInt(document.getElementById('node-pass').value) || 0;
+  const failNodeId = parseInt(document.getElementById('node-fail').value) || 0;
+  const maxIterations = parseInt(document.getElementById('node-max-iter').value) || 20;
+
+  if (!name) {
+    alert('Node name is required');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${MAIN_API}/nodes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        agent_prompt: agentPrompt || '',
+        pre_hooks: preHooks,
+        post_hooks: postHooks,
+        pass_node_id: passNodeId,
+        fail_node_id: failNodeId,
+        max_iterations: maxIterations,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error: ${data.detail || 'Failed to create node'}`);
+      return;
+    }
+
+    const newNode = await res.json();
+    await loadNodes();
+    selectNode(newNode.id);
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function deleteNode(nodeId) {
+  const node = state.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+
+  if (!confirm(`Delete node "${node.name}"? This cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`${MAIN_API}/nodes/${nodeId}`, {
+      method: 'DELETE',
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error: ${data.detail || 'Failed to delete node'}`);
+      return;
+    }
+
+    setSelectedNodeId(null);
+    await loadNodes();
+    document.getElementById('node-editor-panel').innerHTML =
+      '<div class="node-editor-placeholder">Select a node to edit</div>';
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
 function setupImageDropzone() {
   if (!imageDropzoneEl || !imageInputEl) {
     return;
@@ -1166,9 +1830,14 @@ function clearImages() {
 async function describeImages(images) {
   const results = [];
   for (const img of images) {
-    const base64 = await getResizedImageBase64(img.dataUrl || '', 1024);
+    const base64 = await getResizedImageBase64(img.dataUrl || '', visionImageMaxSize);
     if (!base64) {
-      results.push(`[Image: ${img.name}]\nDescription unavailable (invalid data).`);
+      results.push({
+        name: img.name,
+        location: img.name,
+        description: null,
+        error: 'invalid data'
+      });
       continue;
     }
     try {
@@ -1187,12 +1856,27 @@ async function describeImages(images) {
       });
       const data = await res.json();
       if (res.ok && data.success && data.description) {
-        results.push(`[Image: ${img.name}]\n${data.description}`);
+        results.push({
+          name: img.name,
+          location: img.name,
+          description: data.description,
+          error: null
+        });
       } else {
-        results.push(`[Image: ${img.name}]\nDescription unavailable (${data.error || 'vision model not configured'}).`);
+        results.push({
+          name: img.name,
+          location: img.name,
+          description: null,
+          error: data.error || 'vision model not configured'
+        });
       }
     } catch (err) {
-      results.push(`[Image: ${img.name}]\nDescription unavailable (${err.message}).`);
+      results.push({
+        name: img.name,
+        location: img.name,
+        description: null,
+        error: err.message
+      });
     }
   }
   return results;
@@ -1394,7 +2078,20 @@ function showNewTaskModal() {
     alert('Select a project first');
     return;
   }
+  document.getElementById('new-task-status').value = 'backlog';
+  if (newTaskNodeSelectEl) {
+    newTaskNodeSelectEl.value = getDefaultNodeId();
+  }
+  populateParentTaskOptions(pendingParentTaskId);
+  pendingParentTaskId = null;
+  resetNewTaskCriteria();
   document.getElementById('new-task-modal').style.display = 'flex';
+}
+
+function createSubtask(parentTaskId) {
+  if (!parentTaskId) return;
+  pendingParentTaskId = parentTaskId;
+  showNewTaskModal();
 }
 
 function hideModals() {
@@ -1406,6 +2103,7 @@ function hideModals() {
   document.getElementById('settings-modal').style.display = 'none';
   setEditingProjectId(null);
   setEditingTaskId(null);
+  resetNewTaskCriteria();
 }
 
 async function createProject() {
@@ -1524,19 +2222,43 @@ async function deleteProject(projectId) {
 async function createTask() {
   const title = document.getElementById('new-task-title').value.trim();
   const description = document.getElementById('new-task-desc').value.trim();
+  const parentRaw = newTaskParentSelectEl ? newTaskParentSelectEl.value : '';
+  const status = document.getElementById('new-task-status').value;
+  const nodeIdRaw = newTaskNodeSelectEl ? newTaskNodeSelectEl.value : '';
   if (!title) return;
+  if (!newTaskCriteria.length) {
+    alert('Add at least one acceptance criteria');
+    return;
+  }
+
+  let parentId = null;
+  if (parentRaw) {
+    parentId = parseInt(parentRaw, 10);
+    if (Number.isNaN(parentId)) parentId = null;
+  }
+  const nodeId = nodeIdRaw ? parseInt(nodeIdRaw, 10) : null;
 
   try {
     const res = await fetch(`${MAIN_API}/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: state.selectedProject.id, title, description })
+      body: JSON.stringify({
+        project_id: state.selectedProject.id,
+        parent_id: parentId,
+        node_id: nodeId,
+        title,
+        description,
+        status,
+        acceptance_criteria: newTaskCriteria
+      })
     });
     await res.json();
     await loadTasks(state.selectedProject.id);
     hideModals();
     document.getElementById('new-task-title').value = '';
     document.getElementById('new-task-desc').value = '';
+    if (newTaskParentSelectEl) newTaskParentSelectEl.value = '';
+    resetNewTaskCriteria();
   } catch (err) {
     alert('Failed to create task: ' + err.message);
   }
@@ -1552,8 +2274,38 @@ function showEditTaskModal(taskId) {
   document.getElementById('edit-task-title').value = task.title || '';
   document.getElementById('edit-task-desc').value = task.description || '';
   document.getElementById('edit-task-status').value = task.status || 'backlog';
-  document.getElementById('edit-task-stage').value = task.stage || 'dev';
+  if (editTaskNodeSelectEl) {
+    editTaskNodeSelectEl.value = task.node_id ? String(task.node_id) : getDefaultNodeId();
+  }
+  if (task.parent_id) {
+    const parent = findTaskById(task.parent_id);
+    if (editTaskParentRowEl && editTaskParentLinkEl) {
+      editTaskParentRowEl.style.display = 'block';
+      const label = parent
+        ? `#${parent.id} ${parent.title || 'Untitled task'}`
+        : `#${task.parent_id}`;
+      editTaskParentLinkEl.textContent = label;
+      editTaskParentLinkEl.onclick = (event) => {
+        event.preventDefault();
+        openTaskEditor(task.parent_id);
+      };
+    }
+  } else if (editTaskParentRowEl) {
+    editTaskParentRowEl.style.display = 'none';
+    if (editTaskParentLinkEl) {
+      editTaskParentLinkEl.textContent = '';
+      editTaskParentLinkEl.onclick = null;
+    }
+  }
   document.getElementById('edit-task-modal').style.display = 'flex';
+  resetCommentForm();
+  loadTaskAcceptanceCriteria(taskId);
+  loadTaskComments(taskId);
+  loadTaskAttachments(taskId);
+  loadTaskRuns(taskId);
+  if (taskRunPreviewEl) {
+    taskRunPreviewEl.value = '';
+  }
 }
 
 async function updateTask() {
@@ -1564,13 +2316,14 @@ async function updateTask() {
   const title = document.getElementById('edit-task-title').value.trim();
   const description = document.getElementById('edit-task-desc').value.trim();
   const status = document.getElementById('edit-task-status').value;
-  const stage = document.getElementById('edit-task-stage').value;
+  const nodeIdRaw = editTaskNodeSelectEl ? editTaskNodeSelectEl.value : '';
+  const nodeId = nodeIdRaw ? parseInt(nodeIdRaw, 10) : null;
 
   try {
     const res = await fetch(`${MAIN_API}/tasks/${state.editingTaskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, status, stage })
+      body: JSON.stringify({ title, description, status, node_id: nodeId })
     });
     if (!res.ok) {
       const errorText = await res.text();
@@ -1609,6 +2362,769 @@ async function deleteTask(taskId) {
   }
 }
 
+async function loadTaskAcceptanceCriteria(taskId) {
+  if (!criteriaListEl) return;
+  criteriaListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/acceptance`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    taskCriteria = await res.json();
+    renderAcceptanceCriteria();
+  } catch (err) {
+    criteriaListEl.textContent = `Failed to load criteria: ${err.message}`;
+  }
+}
+
+function renderAcceptanceCriteria() {
+  if (!criteriaListEl) return;
+  if (!taskCriteria.length) {
+    criteriaListEl.textContent = 'No criteria';
+    return;
+  }
+  criteriaListEl.innerHTML = taskCriteria.map(criteria => `
+    <div class="criteria-item">
+      <label class="criteria-main">
+        <input type="checkbox" ${criteria.passed ? 'checked' : ''} onchange="toggleAcceptanceCriteria(${criteria.id}, this.checked)">
+        <span class="criteria-desc">${escapeHtml(criteria.description)}</span>
+      </label>
+      <div class="criteria-meta">By ${escapeHtml(criteria.author)} | ${formatDate(criteria.updated_at)}</div>
+      <div class="criteria-actions">
+        <button class="delete" onclick="deleteAcceptanceCriteria(${criteria.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function resetNewTaskCriteria() {
+  newTaskCriteria = [];
+  renderNewTaskCriteria();
+}
+
+function renderNewTaskCriteria() {
+  if (!newTaskCriteriaListEl) return;
+  if (!newTaskCriteria.length) {
+    newTaskCriteriaListEl.textContent = 'No criteria';
+    return;
+  }
+  newTaskCriteriaListEl.innerHTML = newTaskCriteria.map((criteria, idx) => `
+    <div class="criteria-item">
+      <div class="criteria-main">
+        <span class="criteria-desc">${escapeHtml(criteria.description)}</span>
+      </div>
+      <div class="criteria-actions">
+        <button class="delete" onclick="removeNewTaskCriteria(${idx})">Remove</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addNewTaskCriteria() {
+  const description = newTaskCriteriaDescEl?.value.trim() || '';
+  if (!description) {
+    alert('Criteria description is required');
+    return;
+  }
+  newTaskCriteria.push({
+    description,
+    passed: false,
+    author: 'user'
+  });
+  if (newTaskCriteriaDescEl) newTaskCriteriaDescEl.value = '';
+  renderNewTaskCriteria();
+}
+
+function removeNewTaskCriteria(index) {
+  newTaskCriteria = newTaskCriteria.filter((_, idx) => idx !== index);
+  renderNewTaskCriteria();
+}
+
+async function addAcceptanceCriteria() {
+  if (!state.selectedTask) {
+    alert('Select a task first');
+    return;
+  }
+  const description = criteriaDescEl?.value.trim() || '';
+  const author = criteriaAuthorEl?.value.trim() || '';
+  if (!description) {
+    alert('Criteria description is required');
+    return;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/acceptance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description,
+        author: author || null
+      })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    await res.json();
+    if (criteriaDescEl) criteriaDescEl.value = '';
+    if (criteriaAuthorEl) criteriaAuthorEl.value = '';
+    await loadTaskAcceptanceCriteria(state.selectedTask.id);
+  } catch (err) {
+    alert('Failed to add criteria: ' + err.message);
+  }
+}
+
+async function toggleAcceptanceCriteria(criteriaId, passed) {
+  if (!state.selectedTask) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/acceptance/${criteriaId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed })
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    await res.json();
+    await loadTaskAcceptanceCriteria(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to update criteria: ${err.message}`);
+  }
+}
+
+async function deleteAcceptanceCriteria(criteriaId) {
+  if (!state.selectedTask) return;
+  if (!confirm('Delete this criteria?')) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/acceptance/${criteriaId}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    await res.json();
+    await loadTaskAcceptanceCriteria(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to delete criteria: ${err.message}`);
+  }
+}
+
+async function loadTaskComments(taskId) {
+  if (!taskCommentsListEl) return;
+  taskCommentsListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/comments`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    taskComments = await res.json();
+    renderTaskComments();
+    updateAttachmentCommentOptions();
+  } catch (err) {
+    taskCommentsListEl.textContent = `Failed to load comments: ${err.message}`;
+  }
+}
+
+function renderTaskComments() {
+  if (!taskCommentsListEl) return;
+  if (!taskComments.length) {
+    taskCommentsListEl.textContent = 'No comments';
+    return;
+  }
+  taskCommentsListEl.innerHTML = taskComments.map(comment => `
+    <div class="comment-item">
+      <div class="comment-meta">
+        <div>ID: ${escapeHtml(comment.id)} | Task: ${escapeHtml(comment.task_id)}</div>
+        <div>Author: ${escapeHtml(comment.author || 'human')}</div>
+        <div>Created: ${escapeHtml(formatDate(comment.created_at))} | Updated: ${escapeHtml(formatDate(comment.updated_at))}</div>
+      </div>
+      <div>${escapeHtml(comment.body || '')}</div>
+      <div class="comment-actions">
+        <button onclick="startEditComment(${comment.id})">Edit</button>
+        <button class="delete" onclick="deleteTaskComment(${comment.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateAttachmentCommentOptions() {
+  if (!attachmentCommentIdEl) return;
+  const current = attachmentCommentIdEl.value;
+  const options = ['<option value="">Attach to task</option>'];
+  taskComments.forEach(comment => {
+    const preview = escapeHtml((comment.body || '').slice(0, 40));
+    options.push(`<option value="${comment.id}">Comment #${comment.id} - ${preview}</option>`);
+  });
+  attachmentCommentIdEl.innerHTML = options.join('');
+  if (current && [...attachmentCommentIdEl.options].some(opt => opt.value === current)) {
+    attachmentCommentIdEl.value = current;
+  }
+}
+
+function startEditComment(commentId) {
+  const comment = taskComments.find(item => item.id === commentId);
+  if (!comment) return;
+  editingCommentId = commentId;
+  if (commentIdEl) commentIdEl.value = String(commentId);
+  if (commentAuthorEl) commentAuthorEl.value = comment.author || '';
+  if (commentBodyEl) commentBodyEl.value = comment.body || '';
+}
+
+function resetCommentForm() {
+  editingCommentId = null;
+  if (commentIdEl) commentIdEl.value = '';
+  if (commentAuthorEl) commentAuthorEl.value = '';
+  if (commentBodyEl) commentBodyEl.value = '';
+}
+
+async function saveTaskComment() {
+  if (!state.selectedTask) {
+    alert('Select a task first');
+    return;
+  }
+  const author = (commentAuthorEl?.value || '').trim();
+  const body = (commentBodyEl?.value || '').trim();
+  if (!body) {
+    alert('Comment body is required');
+    return;
+  }
+  const payload = { body };
+  if (author) payload.author = author;
+
+  const taskId = state.selectedTask.id;
+  const url = editingCommentId
+    ? `${MAIN_API}/tasks/${taskId}/comments/${editingCommentId}`
+    : `${MAIN_API}/tasks/${taskId}/comments`;
+  const method = editingCommentId ? 'PATCH' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    resetCommentForm();
+    await loadTaskComments(taskId);
+  } catch (err) {
+    alert(`Failed to save comment: ${err.message}`);
+  }
+}
+
+async function deleteTaskComment(commentId) {
+  if (!state.selectedTask) return;
+  if (!confirm('Delete this comment?')) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/comments/${commentId}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    if (editingCommentId === commentId) resetCommentForm();
+    await loadTaskComments(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to delete comment: ${err.message}`);
+  }
+}
+
+async function loadTaskAttachments(taskId) {
+  if (!taskAttachmentsListEl) return;
+  taskAttachmentsListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/attachments`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    taskAttachments = await res.json();
+    renderTaskAttachments();
+  } catch (err) {
+    taskAttachmentsListEl.textContent = `Failed to load attachments: ${err.message}`;
+  }
+}
+
+function renderTaskAttachments() {
+  if (!taskAttachmentsListEl) return;
+  if (!taskAttachments.length) {
+    taskAttachmentsListEl.textContent = 'No attachments';
+    return;
+  }
+  taskAttachmentsListEl.innerHTML = taskAttachments.map(attachment => `
+    <div class="attachment-item">
+      <div class="attachment-row">
+        <a class="attachment-link" href="${MAIN_API}${attachment.url}" target="_blank">${escapeHtml(attachment.filename)}</a>
+        <div class="attachment-meta">ID: ${escapeHtml(attachment.id)} | Task: ${escapeHtml(attachment.task_id)} | Comment: ${escapeHtml(attachment.comment_id ?? '-')}</div>
+        <div class="attachment-meta">Type: ${escapeHtml(attachment.mime_type)} | Size: ${escapeHtml(attachment.size_bytes)} bytes</div>
+        <div class="attachment-meta">Storage: ${escapeHtml(attachment.storage_path)}</div>
+        <div class="attachment-meta">URL: ${escapeHtml(attachment.url)}</div>
+        <div class="attachment-meta">Uploaded by: ${escapeHtml(attachment.uploaded_by)} | Created: ${escapeHtml(formatDate(attachment.created_at))}</div>
+      </div>
+      <div class="attachment-actions">
+        <button class="delete" onclick="deleteTaskAttachment(${attachment.id})">Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadTaskRuns(taskId) {
+  if (!taskRunsListEl) return;
+  taskRunsListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/runs`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    taskRuns = await res.json();
+    renderTaskRuns();
+  } catch (err) {
+    taskRunsListEl.textContent = `Failed to load runs: ${err.message}`;
+  }
+}
+
+function renderTaskRuns() {
+  if (!taskRunsListEl) return;
+  if (!taskRuns.length) {
+    taskRunsListEl.textContent = 'No runs yet';
+    return;
+  }
+  taskRunsListEl.innerHTML = taskRuns.map(run => {
+    const status = run.status || 'unknown';
+    const summary = truncateText(run.summary || run.error || '', 160);
+    const started = formatDate(run.started_at);
+    const finished = run.finished_at ? formatDate(run.finished_at) : '-';
+    return `
+      <div class="run-item">
+        <div class="run-item-header">
+          <span>#${run.id} · ${escapeHtml(status)}</span>
+          <span>${escapeHtml(started)}</span>
+        </div>
+        <div class="run-item-meta">Node ${run.node_id} · Finished ${escapeHtml(finished)}</div>
+        ${summary ? `<div class="run-item-meta">${escapeHtml(summary)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+async function uploadTaskAttachment() {
+  if (!state.selectedTask) {
+    alert('Select a task first');
+    return;
+  }
+  const file = attachmentFileEl?.files?.[0];
+  if (!file) {
+    alert('Select a file to upload');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  if (attachmentUploadedByEl?.value) {
+    formData.append('uploaded_by', attachmentUploadedByEl.value.trim());
+  }
+  if (attachmentCommentIdEl?.value) {
+    formData.append('comment_id', attachmentCommentIdEl.value);
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/attachments`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    if (attachmentFileEl) attachmentFileEl.value = '';
+    if (attachmentUploadedByEl) attachmentUploadedByEl.value = '';
+    if (attachmentCommentIdEl) attachmentCommentIdEl.value = '';
+    await loadTaskAttachments(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to upload attachment: ${err.message}`);
+  }
+}
+
+async function deleteTaskAttachment(attachmentId) {
+  if (!state.selectedTask) return;
+  if (!confirm('Delete this attachment?')) return;
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${state.selectedTask.id}/attachments/${attachmentId}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errorText}`);
+    }
+    await res.json();
+    await loadTaskAttachments(state.selectedTask.id);
+  } catch (err) {
+    alert(`Failed to delete attachment: ${err.message}`);
+  }
+}
+
+async function switchAgentModel(model, label) {
+  const res = await fetch(`${AIDER_API}/api/model/switch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, timeout: 120 })
+  });
+  const data = await res.json();
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  addMessage('system', `${label} model loaded: ${data.loaded_model || model}`);
+  return data;
+}
+
+function buildImageContextLayer(descriptions) {
+  const context = {};
+  descriptions.forEach((entry, index) => {
+    const key = entry.name || `image_${index + 1}`;
+    const description = entry.description
+      ? entry.description
+      : `Description unavailable (${entry.error || 'unknown'})`;
+    context[key] = {
+      location: entry.location || entry.name || key,
+      description
+    };
+  });
+  return `IMAGE_CONTEXT:\n${JSON.stringify(context, null, 2)}`;
+}
+
+async function fetchTaskContext(taskId) {
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/context`);
+    if (!res.ok) {
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn('Failed to load task context:', err.message);
+    return null;
+  }
+}
+
+function buildTaskContextLayer(context) {
+  if (!context) return '';
+  return `TASK_CONTEXT:\n${JSON.stringify(context, null, 2)}`;
+}
+
+function buildTaskRequest(task) {
+  if (!task) return 'Execute the task using the provided context.';
+  const title = (task.title || '').trim();
+  const description = (task.description || '').trim();
+  if (title && description) {
+    return `${title}\n\n${description}`;
+  }
+  return title || description || 'Execute the task using the provided context.';
+}
+
+async function buildPromptForRequest(taskId, requestText, imageLayer, concise = false) {
+  const normalizedRequest = (requestText || '').trim()
+    || 'Execute the task using the provided context.';
+  if (!taskId) {
+    return imageLayer
+      ? `${imageLayer}\n\nREQUEST:\n${normalizedRequest}`
+      : `REQUEST:\n${normalizedRequest}`;
+  }
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/prompt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request: normalizedRequest,
+        image_context: imageLayer || null,
+        concise
+      })
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.prompt || '';
+  } catch (err) {
+    const promptSections = [];
+    const taskContext = await fetchTaskContext(taskId);
+    if (taskContext?.node?.agent_prompt) {
+      promptSections.push(`NODE_ROLE:\n${taskContext.node.agent_prompt}`);
+    }
+    const taskLayer = buildTaskContextLayer(taskContext);
+    if (taskLayer) {
+      promptSections.push(taskLayer);
+    }
+    if (imageLayer) {
+      promptSections.push(imageLayer);
+    }
+    promptSections.push(`REQUEST:\n${normalizedRequest}`);
+    return promptSections.join('\n\n');
+  }
+}
+
+async function createTaskRun(taskId, nodeId) {
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node_id: nodeId })
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const run = await res.json();
+    await refreshTaskRuns(taskId);
+    return run;
+  } catch (err) {
+    console.warn('Failed to create task run:', err.message);
+    return null;
+  }
+}
+
+async function refreshTaskRuns(taskId) {
+  if (getEditingTaskId() !== taskId) return;
+  await loadTaskRuns(taskId);
+}
+
+async function updateTaskRun(taskId, runId, payload) {
+  if (!runId) return;
+  try {
+    await fetch(`${MAIN_API}/tasks/${taskId}/runs/${runId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    await refreshTaskRuns(taskId);
+  } catch (err) {
+    console.warn('Failed to update task run:', err.message);
+  }
+}
+
+async function postAgentComment(taskId, nodeLabel, runSummary = '', requestText = '') {
+  const context = await fetchTaskContext(taskId);
+  if (!context) return;
+  const gitInfo = context.git || {};
+  const gitSummary = gitInfo.last_commit_summary;
+  const files = Array.isArray(gitInfo.last_commit_files) ? gitInfo.last_commit_files : [];
+  const working = Array.isArray(gitInfo.working_changes) ? gitInfo.working_changes : [];
+
+  const lines = [`Agent run (${nodeLabel})`];
+  if (requestText) {
+    lines.push(`Request: ${truncateText(requestText, 500)}`);
+  }
+  if (runSummary) lines.push(`Summary: ${runSummary}`);
+  if (gitSummary) lines.push(`Last commit: ${gitSummary}`);
+  if (files.length) lines.push(`Last commit files: ${files.join(', ')}`);
+  if (working.length) {
+    const workingList = working.map(item => `${item.status} ${item.path}`).join(', ');
+    lines.push(`Working changes: ${workingList}`);
+  }
+  const body = lines.join('\n');
+
+  try {
+    const res = await fetch(`${MAIN_API}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        author: `agent.${nodeLabel}`,
+        body
+      })
+    });
+    if (!res.ok) {
+      return;
+    }
+    if (state.selectedTask?.id === taskId) {
+      await loadTaskComments(taskId);
+    }
+  } catch (err) {
+    console.warn('Failed to post agent comment:', err.message);
+  }
+}
+
+async function buildVisionImageLayer() {
+  if (state.attachedImages.length === 0) return '';
+  const activeModel = modelSelectEl.value || '';
+  const visionModel = state.visionModel || '';
+  let switched = false;
+  if (visionModel && activeModel && visionModel !== activeModel) {
+    statusEl.textContent = `Loading vision model: ${visionModel}...`;
+    statusEl.className = 'status connected';
+    try {
+      await switchAgentModel(visionModel, 'Vision');
+      switched = true;
+    } catch (err) {
+      addMessage('error', `Vision model switch failed: ${err.message}`);
+    }
+  }
+
+  const imageDescriptions = await describeImages(state.attachedImages);
+  let imageLayer = '';
+  if (imageDescriptions.length > 0) {
+    imageLayer = buildImageContextLayer(imageDescriptions);
+  }
+
+  if (switched && activeModel) {
+    statusEl.textContent = `Restoring model: ${activeModel}...`;
+    statusEl.className = 'status connected';
+    try {
+      await switchAgentModel(activeModel, 'Primary');
+    } catch (err) {
+      addMessage('error', `Failed to restore model: ${err.message}`);
+    }
+  }
+
+  return imageLayer;
+}
+
+async function runAgentRequest(requestText, task = null, imageLayer = '', options = {}) {
+  const workspace = state.selectedProject
+    ? getWorkspaceName(state.selectedProject.workspace_path)
+    : 'poc';
+
+  let runId = null;
+  if (task?.id) {
+    const run = await createTaskRun(task.id, task.node_id);
+    runId = run?.id || null;
+  }
+
+  statusEl.textContent = 'Agent is working...';
+  statusEl.className = 'status connected';
+
+  try {
+    const concise = options.concise === true;
+    const fullPrompt = options.promptOverride
+      || await buildPromptForRequest(task?.id, requestText, imageLayer, concise);
+    const res = await fetch(`${AIDER_API}/api/agent/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task: fullPrompt,
+        workspace,
+        project_id: state.selectedProject?.id,
+        task_id: task?.id
+      })
+    });
+
+    const data = await res.json();
+    console.log('Agent response:', data);
+
+    const ok = data.success || data.status === 'PASS';
+    if (ok) {
+      const responseText = data.summary || 'Task completed';
+      addMessage('assistant', responseText, data.tool_calls);
+      statusEl.textContent = 'Ready';
+      statusEl.className = 'status connected';
+      if (state.selectedProject) loadFileTree(state.selectedProject.id);
+      if (task?.id) {
+        const nodeLabel = task.node_name || 'dev';
+        await postAgentComment(task.id, nodeLabel, data.summary || '', requestText);
+      }
+      if (task?.id && runId) {
+        await updateTaskRun(task.id, runId, {
+          status: 'pass',
+          summary: data.summary || null,
+          tool_calls: data.tool_calls || null,
+          finished_at: new Date().toISOString()
+        });
+      }
+      return { ok: true, data };
+    } else {
+      addMessage('error', `Error: ${data.error || data.summary || 'Unknown error'}`);
+      statusEl.textContent = 'Error - see output';
+      statusEl.className = 'status error';
+      if (task?.id && runId) {
+        await updateTaskRun(task.id, runId, {
+          status: 'fail',
+          error: data.error || data.summary || 'Unknown error',
+          tool_calls: data.tool_calls || null,
+          finished_at: new Date().toISOString()
+        });
+      }
+    }
+    return { ok: false, data };
+  } catch (err) {
+    console.error('Fetch error:', err);
+    addMessage('error', 'Connection error: ' + err.message);
+    statusEl.textContent = 'Connection failed';
+    statusEl.className = 'status error';
+    if (task?.id && runId) {
+      await updateTaskRun(task.id, runId, {
+        status: 'fail',
+        error: err.message,
+        finished_at: new Date().toISOString()
+      });
+    }
+    return { ok: false, error: err };
+  }
+}
+
+async function buildTaskPromptPreview(taskId = null) {
+  const targetId = taskId || getEditingTaskId();
+  if (!targetId) {
+    alert('Select a task first');
+    return '';
+  }
+  const task = findTaskById(targetId);
+  if (!task) return '';
+  const requestText = buildTaskRequest(task);
+  const imageLayer = await buildVisionImageLayer();
+  const prompt = await buildPromptForRequest(targetId, requestText, imageLayer, true);
+  if (taskRunPreviewEl) {
+    taskRunPreviewEl.value = prompt;
+  }
+  return prompt;
+}
+
+async function runTaskFromList(taskId) {
+  if (state.isModelSwitching) {
+    addMessage('system', 'Model is switching. Please wait...');
+    return;
+  }
+  const task = findTaskById(taskId);
+  if (!task) {
+    addMessage('error', 'Task not found.');
+    return;
+  }
+  setSelectedTask(task);
+  renderTasks();
+  const requestText = buildTaskRequest(task);
+  addMessage('system', `Running task #${task.id}: ${task.title || 'Untitled task'}`);
+  const imageLayer = await buildVisionImageLayer();
+  const prompt = await buildPromptForRequest(task.id, requestText, imageLayer, true);
+  if (getEditingTaskId() === task.id && taskRunPreviewEl) {
+    taskRunPreviewEl.value = prompt;
+  }
+  return await runAgentRequest(requestText, task, imageLayer, {
+    concise: true,
+    promptOverride: prompt
+  });
+}
+
+async function runTaskFromModal(taskId) {
+  if (!taskId) return;
+  const runBtn = document.getElementById('edit-task-run-btn');
+  if (runBtn) {
+    runBtn.disabled = true;
+  }
+  try {
+    const result = await runTaskFromList(taskId);
+    if (result?.ok) {
+      hideModals();
+    }
+  } finally {
+    if (runBtn) {
+      runBtn.disabled = false;
+    }
+  }
+}
+
 // Chat functions
 async function sendMessage() {
   if (state.isModelSwitching) {
@@ -1621,57 +3137,12 @@ async function sendMessage() {
   addMessage('user', text);
   promptEl.value = '';
   sendBtn.disabled = true;
-  statusEl.textContent = 'Agent is working...';
-
-  const workspace = state.selectedProject
-    ? getWorkspaceName(state.selectedProject.workspace_path)
-    : 'poc';
-
   try {
-    // Build prompt with task context if selected
-    let fullPrompt = text;
-    if (state.selectedTask) {
-      fullPrompt = `Task: ${state.selectedTask.title}\n${state.selectedTask.description || ''}\n\nRequest: ${text}`;
-    }
-
-    if (state.attachedImages.length > 0) {
-      const imageDescriptions = await describeImages(state.attachedImages);
-      if (imageDescriptions.length > 0) {
-        fullPrompt = `${fullPrompt}\n\n${imageDescriptions.join('\n\n')}`;
-      }
-    }
-
-    const res = await fetch(`${AIDER_API}/api/agent/run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        task: fullPrompt,
-        workspace,
-        project_id: state.selectedProject?.id,
-        task_id: state.selectedTask?.id
-      })
-    });
-
-    const data = await res.json();
-    console.log('Agent response:', data);
-
-    if (data.success || data.status === 'PASS') {
-      const responseText = data.summary || 'Task completed';
-      addMessage('assistant', responseText, data.tool_calls);
-      statusEl.textContent = 'Ready';
-      statusEl.className = 'status connected';
-      // Refresh file tree after agent completes
-      if (state.selectedProject) loadFileTree(state.selectedProject.id);
-    } else {
-      addMessage('error', `Error: ${data.error || data.summary || 'Unknown error'}`);
-      statusEl.textContent = 'Error - see output';
-      statusEl.className = 'status error';
-    }
+    const imageLayer = await buildVisionImageLayer();
+    await runAgentRequest(text, state.selectedTask, imageLayer);
   } catch (err) {
-    console.error('Fetch error:', err);
+    console.error('Send error:', err);
     addMessage('error', 'Connection error: ' + err.message);
-    statusEl.textContent = 'Connection failed';
-    statusEl.className = 'status error';
   }
 
   sendBtn.disabled = false;
@@ -1913,11 +3384,26 @@ Object.assign(window, {
   updateProject,
   deleteProject,
   createTask,
+  addNewTaskCriteria,
+  removeNewTaskCriteria,
+  createSubtask,
   updateTask,
   deleteTask,
+  addAcceptanceCriteria,
+  toggleAcceptanceCriteria,
+  deleteAcceptanceCriteria,
+  saveTaskComment,
+  resetCommentForm,
+  startEditComment,
+  deleteTaskComment,
+  uploadTaskAttachment,
+  deleteTaskAttachment,
+  buildTaskPromptPreview,
   selectProject,
   showEditProjectModal,
   openTaskEditor,
+  runTaskFromList,
+  runTaskFromModal,
   openImagePicker,
   removeImage,
   handleFileClick,
@@ -1936,7 +3422,16 @@ Object.assign(window, {
   pushBranch,
   addRemote,
   applySettings,
-  getEditingTaskId
+  getEditingTaskId,
+  // Node Editor Functions
+  switchSettingsTab,
+  loadNodesForEditor,
+  selectNode,
+  createNewNode,
+  cancelNodeEdit,
+  saveNode,
+  saveNewNode,
+  deleteNode
 });
 
 if (visionModelSelectEl) {

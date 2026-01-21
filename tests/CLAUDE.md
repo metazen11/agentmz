@@ -18,4 +18,10 @@
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
 | #1024 | 6:57 PM | 🔵 | Static file serving architecture in main-api | ~471 |
+
+### Jan 20, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1161 | 8:26 PM | 🔵 | Task Nodes and Runs API Test Coverage | ~663 |
 </claude-mem-context>

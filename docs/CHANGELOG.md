@@ -70,7 +70,7 @@ All notable changes to Workflow Hub since the core architecture refactor.
 - **Simplified Task States**:
   - Before: BACKLOG → PM → DEV → QA → SEC → DOCS → COMPLETE (with multiple failure states)
   - After: BACKLOG → IN_PROGRESS → VALIDATING → DONE
-- **Removed Run-based Pipeline**: Pipeline stages now live on Tasks, not Runs
+- **Removed Run-based Pipeline**: Pipeline nodes now live on Tasks, not Runs
 - **Claim Tracking**: Added claims_total, validated, failed columns to Task
 - **WorkCycleService**: New service for task-centric work sessions
 - **Core Flow**: Project → Task → WorkCycle → Claim validation → Ledger

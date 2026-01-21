@@ -26,6 +26,11 @@ export const state = {
 
   // Settings
   envEntries: [],
+  currentSettingsTab: 'env',
+
+  // Nodes
+  nodes: [],
+  selectedNodeId: null,
 
   // Logs
   currentLogTab: 'ollama_http',
@@ -46,6 +51,9 @@ export let visionModel = state.visionModel;
 export let referencedFiles = state.referencedFiles;
 export let attachedImages = state.attachedImages;
 export let envEntries = state.envEntries;
+export let currentSettingsTab = state.currentSettingsTab;
+export let nodes = state.nodes;
+export let selectedNodeId = state.selectedNodeId;
 export let currentLogTab = state.currentLogTab;
 export let editingProjectId = state.editingProjectId;
 export let editingTaskId = state.editingTaskId;
@@ -114,4 +122,19 @@ export function setEditingProjectId(value) {
 export function setEditingTaskId(value) {
   state.editingTaskId = value;
   editingTaskId = value;
+}
+
+export function setCurrentSettingsTab(value) {
+  state.currentSettingsTab = value;
+  currentSettingsTab = value;
+}
+
+export function setNodes(value) {
+  state.nodes = value;
+  nodes = value;
+}
+
+export function setSelectedNodeId(value) {
+  state.selectedNodeId = value;
+  selectedNodeId = value;
 }

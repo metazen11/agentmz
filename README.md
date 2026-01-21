@@ -115,7 +115,7 @@ The UI is a single-file vanilla JavaScript application served by the main API at
 ### Features
 
 - **Project Management** - Create, edit, delete projects
-- **Task Management** - Create tasks with stages (dev, qa, review, complete)
+- **Task Management** - Create tasks with workflow nodes (pm, dev, qa, security, documentation) and required acceptance criteria
 - **File Browser** - Browse workspace files, click to add as context
 - **Chat Interface** - Send prompts to the AI agent
 - **Model Selector** - Switch between available Ollama models
@@ -252,7 +252,7 @@ DEFAULT_WORKSPACE=poc
 **Task**
 - `id`, `project_id`, `parent_id`, `title`, `description`
 - `status`: backlog | in_progress | done | failed
-- `stage`: dev | qa | review | complete
+- `node_id`: workflow node reference (pm | dev | qa | security | documentation)
 
 ### Migrations
 

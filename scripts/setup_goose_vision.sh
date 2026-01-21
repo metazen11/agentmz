@@ -172,9 +172,9 @@ The vision extension provides these tools:
 ## Workflow Hub Context
 
 This is an agentic development workflow manager. Key concepts:
-- Tasks go through pipeline stages: PM -> DEV -> QA -> SEC -> DOCS -> COMPLETE
+- Tasks go through pipeline nodes: PM -> DEV -> QA -> SEC -> DOCS -> COMPLETE
 - Runs are executions of the pipeline for a task
-- Each stage has an agent that processes the handoff
+- Each node has an agent that processes the handoff
 
 ## Project Structure
 
