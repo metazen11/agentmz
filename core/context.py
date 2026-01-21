@@ -50,6 +50,17 @@ def get_git_recent_info(workspace_path: Path) -> dict:
     return info
 
 
+def _build_node_prompt_payload(node) -> dict | None:
+    """Return only node fields needed for agent prompting."""
+    if not node:
+        return None
+    return {
+        "id": node.id,
+        "name": node.name,
+        "agent_prompt": node.agent_prompt,
+    }
+
+
 def build_task_context_payload(task: Task, project: Project, db: Session) -> dict:
     workspace_path = resolve_workspace_path(project.workspace_path)
     git_info = get_git_recent_info(workspace_path) if workspace_path.exists() else {
@@ -84,7 +95,7 @@ def build_task_context_payload(task: Task, project: Project, db: Session) -> dic
         payload["description"] = item.filename
         attachments_payload.append(payload)
 
-    node_payload = task.node.to_dict() if task.node else None
+    node_payload = _build_node_prompt_payload(task.node)
     context = {
         "task": {
             "id": task.id,
@@ -130,7 +141,18 @@ def build_task_context_summary(task: Task, project: Project, db: Session) -> dic
     objective_parts = [task_info.get("title"), task_info.get("description")]
     objective = "\n\n".join([part for part in objective_parts if part])
     git_info = context.get("git", {})
-    last_comment_entry = context.get("comments_recent", [None])[0]
+    last_comment_entry = (context.get("comments_recent") or [None])[0]
+    max_files = 8
+    last_commit_files = (git_info.get("last_commit_files") or [])[:max_files]
+    working_changes = []
+    for item in git_info.get("working_changes") or []:
+        path = item.get("path")
+        status = item.get("status")
+        if path and status:
+            working_changes.append(f"{status} {path}")
+        if len(working_changes) >= max_files:
+            break
+
     summary = {
         "task": {
             "id": task_info.get("id"),
@@ -162,10 +184,6 @@ def build_task_context_summary(task: Task, project: Project, db: Session) -> dic
             }
             for item in context.get("acceptance_criteria", [])
         ],
-        "context_counts": {
-            "attachments": len(context.get("attachments", [])),
-            "comments_recent": len(context.get("comments_recent", [])),
-        },
         "discovery": {
             "instructions": (
                 "Fetch more context only if needed for the objective. "
@@ -179,28 +197,19 @@ def build_task_context_summary(task: Task, project: Project, db: Session) -> dic
                 "runs": f"/tasks/{task.id}/runs",
                 "project_files": f"/projects/{project.id}/files",
                 "git_status": f"/projects/{project.id}/git/status",
-            },
-            "reporting": {
-                "comment_author": f"agent.{task.node_name or 'dev'}",
-                "comment_guidance": (
-                    "After each run, post a comment with tests executed and screenshots captured."
-                ),
+                "help": "/help/agents",
             },
         },
         "recent_files": {
             "last_commit_summary": git_info.get("last_commit_summary"),
-            "last_commit_files": git_info.get("last_commit_files") or [],
-            "working_changes": git_info.get("working_changes") or [],
+            "last_commit_files": last_commit_files,
+            "working_changes": working_changes,
         },
         "last_comment": {
-            "id": last_comment_entry.id if last_comment_entry else None,
-            "author": last_comment_entry.author if last_comment_entry else None,
-            "body": last_comment_entry.body if last_comment_entry else None,
-            "created_at": (
-                last_comment_entry.created_at.isoformat()
-                if last_comment_entry and last_comment_entry.created_at
-                else None
-            ),
+            "id": last_comment_entry.get("id") if last_comment_entry else None,
+            "author": last_comment_entry.get("author") if last_comment_entry else None,
+            "body": last_comment_entry.get("body") if last_comment_entry else None,
+            "created_at": last_comment_entry.get("created_at") if last_comment_entry else None,
         } if last_comment_entry else None,
     }
     return summary

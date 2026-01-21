@@ -1040,3 +1040,28 @@ Implemented provider-agnostic external task import system:
 
 ### Tests
 - `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v`
+
+---
+
+## Implementation Status (2026-01-21 - Session 34)
+
+### Completed
+- [x] Prompt builder now emits Markdown sections (Node Directive → Project Info → System Domain → Objective → Last Comment → Recent Files → Discovery → Image Context → Acceptance Criteria → Request)
+- [x] Help service documentation no longer mentions manual run hooks; it now just offers discovery guidance
+- [x] Task run status updates use `pass`/`fail` so runs report clear outcomes
+
+### Tests
+- `pytest tests/test_browser_hello_world.py::TestBrowserHelloWorld::test_05_trigger_agent -v`
+
+---
+
+## Implementation Status (2026-01-21 - Session 35)
+
+### Completed
+- [x] Compacted task prompt output to a minimal JSON payload with only essential fields
+- [x] Removed node routing/hooks fields from task context payload used for prompting
+- [x] Reduced workspace file listing in agent system prompt to a compact overview with key files
+- [x] Fixed last-comment extraction in prompt context summary for dict payloads
+
+### Tests
+- Not run (prompt formatting changes only)

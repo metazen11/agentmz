@@ -1060,25 +1060,25 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         Returns:
             Complete system prompt string
         """
-        # Get workspace file listing for context
-        file_listing = self._get_workspace_files(workspace_path)
-
         try:
             from project_context import ProjectContext
 
             ctx = ProjectContext(workspace_path=workspace_path)
             ctx.load_all(project_id=project_id, task_id=task_id)
             base_prompt = ctx.build_system_prompt()
+            file_listing = self._get_workspace_files(workspace_path, key_files=ctx.key_files)
             # Append file listing to provide workspace context
-            return base_prompt + "\n\n" + file_listing
+            return base_prompt + ("\n\n" + file_listing if file_listing else "")
 
         except ImportError:
             print("[AGENT] Warning: project_context.py not available, using minimal prompt")
-            return self._minimal_system_prompt() + "\n\n" + file_listing
+            file_listing = self._get_workspace_files(workspace_path)
+            return self._minimal_system_prompt() + ("\n\n" + file_listing if file_listing else "")
 
         except Exception as e:
             print(f"[AGENT] Warning: Context build failed: {e}, using minimal prompt")
-            return self._minimal_system_prompt() + "\n\n" + file_listing
+            file_listing = self._get_workspace_files(workspace_path)
+            return self._minimal_system_prompt() + ("\n\n" + file_listing if file_listing else "")
 
     def _minimal_system_prompt(self) -> str:
         """Fallback minimal system prompt if ProjectContext fails."""
@@ -1112,49 +1112,44 @@ Paths:
 For simple tasks (create a file, write content), just do it directly.
 For complex tasks (modify existing code, find bugs), explore first to understand the codebase."""
 
-    def _get_workspace_files(self, workspace_path: str, max_depth: int = 2) -> str:
-        """Get a formatted list of files in the workspace for agent context.
+    def _get_workspace_files(self, workspace_path: str, key_files: list | None = None) -> str:
+        """Return a compact workspace overview for agent context."""
+        lines = ["## Workspace Overview"]
 
-        Args:
-            workspace_path: Absolute path to the workspace directory
-            max_depth: Maximum directory depth to traverse (default: 2)
-
-        Returns:
-            Formatted string listing workspace files
-        """
-        lines = ["## Workspace Files\n"]
+        try:
+            entries = sorted(os.listdir(workspace_path))
+        except OSError:
+            return "## Workspace Overview\n(unavailable)"
 
         # Directories to skip
-        skip_dirs = {'.git', 'node_modules', '__pycache__', 'venv', '.venv',
-                     'env', '.env', 'dist', 'build', '.pytest_cache', '.mypy_cache'}
+        skip_dirs = {".git", "node_modules", "__pycache__", "venv", ".venv",
+                     "env", ".env", "dist", "build", ".pytest_cache", ".mypy_cache"}
 
-        for root, dirs, files in os.walk(workspace_path):
-            # Skip hidden and common non-essential dirs
-            dirs[:] = [d for d in dirs if not d.startswith('.')
-                       and d not in skip_dirs]
+        dirs = []
+        files = []
+        for entry in entries:
+            full_path = os.path.join(workspace_path, entry)
+            if os.path.isdir(full_path):
+                if entry.startswith(".") or entry in skip_dirs:
+                    continue
+                dirs.append(entry)
+            elif os.path.isfile(full_path):
+                files.append(entry)
 
-            depth = root.replace(workspace_path, '').count(os.sep)
-            if depth >= max_depth:
-                dirs.clear()  # Don't go deeper
-                continue
+        max_items = 12
+        if dirs:
+            suffix = " ..." if len(dirs) > max_items else ""
+            lines.append(f"Top-level dirs: {', '.join(dirs[:max_items])}{suffix}")
+        if files:
+            suffix = " ..." if len(files) > max_items else ""
+            lines.append(f"Top-level files: {', '.join(files[:max_items])}{suffix}")
+        if key_files:
+            key_subset = [str(path) for path in key_files[:max_items]]
+            suffix = " ..." if len(key_files) > max_items else ""
+            lines.append(f"Key files: {', '.join(key_subset)}{suffix}")
 
-            indent = '  ' * depth
-            rel_path = os.path.relpath(root, workspace_path)
-
-            if rel_path != '.':
-                lines.append(f"{indent}{os.path.basename(root)}/")
-
-            # Sort files and limit per directory (include dotfiles, devs need to see config)
-            sorted_files = sorted(files)
-            for file in sorted_files[:20]:  # Limit files per dir
-                lines.append(f"{indent}  {file}")
-
-            # Stop if we've accumulated too many lines
-            if len(lines) >= 100:
-                lines.append("  ... (truncated)")
-                break
-
-        return '\n'.join(lines[:100])  # Cap total lines
+        lines.append("Hint: use glob/grep/read to explore further.")
+        return "\n".join(lines)
 
     def _clean_summary(self, summary: str) -> str:
         """Clean up agent summary for successful completions.

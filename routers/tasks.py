@@ -181,7 +181,6 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
 
 @router.post("/tasks/{task_id}/prompt")
 def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = Depends(get_db)):
-    from typing import List
     import json
 
     if not payload.request.strip():
@@ -191,95 +190,105 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    context = (
-        build_task_context_summary(task, project, db)
-        if payload.concise
-        else build_task_context_payload(task, project, db)
-    )
-    sections: List[str] = []
-    node = context.get("node", {})
+    context = build_task_context_summary(task, project, db)
+
+    node = context.get("node") or {}
     node_prompt = node.get("agent_prompt")
-    if node_prompt:
-        sections.append(f"NODE_DIRECTIVE:\n{node_prompt}\n")
-
-    project_info = context.get("project", {})
-    if project_info:
-        env_value = project_info.get("environment")
-        env_lines = []
-        if isinstance(env_value, dict):
-            env_lines = [f"{key}={value}" for key, value in env_value.items()]
-        elif env_value:
-            env_lines = [str(env_value)]
-        project_lines = [
-            "PROJECT_INFO:",
-            f"Name: {project_info.get('name')}",
-            f"Workspace: {project_info.get('workspace_path')}",
-        ]
-        if env_lines:
-            project_lines.append("Environment:")
-            project_lines.extend(env_lines)
-        else:
-            project_lines.append("Environment: (not provided)")
-        sections.append("\n".join(project_lines) + "\n")
-        system_info = os.getenv("APP_URL") or "https://wfhub.localhost"
-        sections.append(f"SYSTEM_DOMAIN:\n{system_info}\n")
-
+    project_info = context.get("project") or {}
     objective = context.get("objective")
-    if objective:
-        sections.append(f"TASK_OBJECTIVE:\n{objective}\n")
+    last_comment = context.get("last_comment") or {}
+    recent_files = context.get("recent_files") or {}
+    discovery = context.get("discovery") or {}
 
-    last_comment = context.get("last_comment")
-    if last_comment and last_comment.get("body"):
-        comment_author = last_comment.get("author", "unknown")
-        sections.append(
-            f"LAST_COMMENT:\n"
-            f"[{comment_author}] {last_comment.get('body')}\n"
-        )
-
-    recent_files = context.get("recent_files", {})
-    file_lines = []
-    if recent_files.get("last_commit_summary"):
-        file_lines.append(f"Last commit summary: {recent_files['last_commit_summary']}")
-    if recent_files.get("last_commit_files"):
-        files_list = ", ".join(recent_files["last_commit_files"])
-        file_lines.append(f"Last commit files: {files_list}")
-    if recent_files.get("working_changes"):
-        working_list = ", ".join(
-            f"{item.get('status')} {item.get('path')}"
-            for item in recent_files["working_changes"]
-            if item.get("path")
-        )
-        if working_list:
-            file_lines.append(f"Working changes: {working_list}")
-    if file_lines:
-        sections.append(f"RECENT_FILES:\n" + "\n".join(file_lines) + "\n")
-
-    discovery = context.get("discovery", {})
-    discovery_lines = []
-    if discovery.get("instructions"):
-        discovery_lines.append(discovery["instructions"])
-    endpoints = discovery.get("endpoints", {})
-    if endpoints:
-        discovery_lines.append(
-            "Endpoints:\n" + "\n".join(f"{key}: {value}" for key, value in endpoints.items())
-        )
-    if discovery_lines:
-        sections.append(f"DISCOVERY:\n" + "\n".join(discovery_lines) + "\n")
-
-    if payload.image_context:
-        sections.append(f"IMAGE_CONTEXT:\n{payload.image_context}\n")
-
-    acceptance = context.get("acceptance_criteria") or []
-    acceptance_body = "\n".join(
-        f"- {item.get('description')}" for item in acceptance if item.get("description")
-    )
-    if acceptance_body:
-        sections.append(f"ACCEPTANCE_CRITERIA:\n{acceptance_body}\n")
-
+    system_info = os.getenv("APP_URL") or "https://wfhub.localhost"
     request_body = payload.request.strip() or "Execute the task using the provided context."
-    sections.append(f"REQUEST:\n{request_body}\n")
 
-    prompt = "\n".join(section.rstrip() for section in sections if section)
+    image_context = None
+    if payload.image_context:
+        raw_context = payload.image_context.strip()
+        if raw_context.startswith("IMAGE_CONTEXT"):
+            _, _, json_blob = raw_context.partition("\n")
+            try:
+                image_context = json.loads(json_blob)
+            except json.JSONDecodeError:
+                image_context = raw_context
+        else:
+            image_context = raw_context
+
+    if not discovery.get("endpoints"):
+        discovery = {
+            "instructions": (
+                "Fetch more context only if needed for the objective. "
+                "Use the endpoints below to query additional details."
+            ),
+            "endpoints": {
+                "task": f"/tasks/{task.id}",
+                "comments": f"/tasks/{task.id}/comments",
+                "attachments": f"/tasks/{task.id}/attachments",
+                "acceptance": f"/tasks/{task.id}/acceptance",
+                "runs": f"/tasks/{task.id}/runs",
+                "project_files": f"/projects/{project.id}/files",
+                "git_status": f"/projects/{project.id}/git/status",
+                "help": "/help/agents",
+            },
+        }
+
+    prompt_payload = {
+        "node": {
+            "name": node.get("name"),
+            "prompt": node_prompt,
+        } if node_prompt else None,
+        "project": {
+            "name": project_info.get("name"),
+            "workspace_path": project_info.get("workspace_path"),
+            "environment": project_info.get("environment"),
+        } if project_info else None,
+        "system_domain": system_info,
+        "objective": objective,
+        "last_comment": {
+            "author": last_comment.get("author"),
+            "body": last_comment.get("body"),
+        } if last_comment.get("body") else None,
+        "recent_files": {
+            "last_commit_summary": recent_files.get("last_commit_summary"),
+            "last_commit_files": recent_files.get("last_commit_files"),
+            "working_changes": recent_files.get("working_changes"),
+        },
+        "discovery": discovery,
+        "acceptance_criteria": [
+            item.get("description")
+            for item in (context.get("acceptance_criteria") or [])
+            if item.get("description")
+        ],
+        "image_context": image_context,
+        "request": request_body,
+    }
+
+    def _compact(value):
+        if isinstance(value, dict):
+            cleaned = {}
+            for key, item in value.items():
+                compacted = _compact(item)
+                if compacted is None:
+                    continue
+                if compacted == "" or compacted == [] or compacted == {}:
+                    continue
+                cleaned[key] = compacted
+            return cleaned
+        if isinstance(value, list):
+            cleaned_list = []
+            for item in value:
+                compacted = _compact(item)
+                if compacted is None:
+                    continue
+                if compacted == "" or compacted == [] or compacted == {}:
+                    continue
+                cleaned_list.append(compacted)
+            return cleaned_list
+        return value
+
+    compact_payload = _compact(prompt_payload)
+    prompt = json.dumps(compact_payload, indent=2)
     return {"prompt": prompt}
 
 
