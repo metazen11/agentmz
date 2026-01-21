@@ -1015,7 +1015,7 @@ function renderTasks() {
         <div class="task-actions">
           <button onclick="event.stopPropagation(); openTaskEditor(${t.id})">Edit</button>
           <button class="delete" onclick="event.stopPropagation(); deleteTask(${t.id})">Delete</button>
-          <button onclick="event.stopPropagation(); runTaskFromList(${t.id})">Run</button>
+          <button onclick="event.stopPropagation(); runTaskFromList(this, ${t.id})">Run</button>
         </div>
       </div>
       ${renderTooltip(tooltipRows)}
@@ -3078,39 +3078,46 @@ async function buildTaskPromptPreview(taskId = null) {
   return prompt;
 }
 
-async function runTaskFromList(taskId) {
+async function runTaskFromList(runButton, taskId) {
   if (state.isModelSwitching) {
     addMessage('system', 'Model is switching. Please wait...');
     return;
   }
-  const task = findTaskById(taskId);
-  if (!task) {
-    addMessage('error', 'Task not found.');
-    return;
+  const buttonEl = runButton instanceof HTMLElement ? runButton : null;
+  if (buttonEl) {
+    buttonEl.disabled = true;
   }
-  setSelectedTask(task);
-  renderTasks();
-  const requestText = buildTaskRequest(task);
-  addMessage('system', `Running task #${task.id}: ${task.title || 'Untitled task'}`);
-  const imageLayer = await buildVisionImageLayer();
-  const prompt = await buildPromptForRequest(task.id, requestText, imageLayer, true);
-  if (getEditingTaskId() === task.id && taskRunPreviewEl) {
-    taskRunPreviewEl.value = prompt;
+  try {
+    const task = findTaskById(taskId);
+    if (!task) {
+      addMessage('error', 'Task not found.');
+      return;
+    }
+    setSelectedTask(task);
+    renderTasks();
+    const requestText = buildTaskRequest(task);
+    addMessage('system', `Running task #${task.id}: ${task.title || 'Untitled task'}`);
+    const imageLayer = await buildVisionImageLayer();
+    const prompt = await buildPromptForRequest(task.id, requestText, imageLayer, true);
+    if (getEditingTaskId() === task.id && taskRunPreviewEl) {
+      taskRunPreviewEl.value = prompt;
+    }
+    return await runAgentRequest(requestText, task, imageLayer, {
+      concise: true,
+      promptOverride: prompt
+    });
+  } finally {
+    if (buttonEl) {
+      buttonEl.disabled = false;
+    }
   }
-  return await runAgentRequest(requestText, task, imageLayer, {
-    concise: true,
-    promptOverride: prompt
-  });
 }
 
 async function runTaskFromModal(taskId) {
   if (!taskId) return;
   const runBtn = document.getElementById('edit-task-run-btn');
-  if (runBtn) {
-    runBtn.disabled = true;
-  }
   try {
-    const result = await runTaskFromList(taskId);
+    const result = await runTaskFromList(runBtn, taskId);
     if (result?.ok) {
       hideModals();
     }
