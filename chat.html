@@ -2813,11 +2813,6 @@ async function fetchTaskContext(taskId) {
   }
 }
 
-function buildTaskContextLayer(context) {
-  if (!context) return '';
-  return `TASK_CONTEXT:\n${JSON.stringify(context, null, 2)}`;
-}
-
 function buildTaskRequest(task) {
   if (!task) return 'Execute the task using the provided context.';
   const title = (task.title || '').trim();
@@ -2852,20 +2847,21 @@ async function buildPromptForRequest(taskId, requestText, imageLayer, concise = 
     const data = await res.json();
     return data.prompt || '';
   } catch (err) {
-    const promptSections = [];
-    const taskContext = await fetchTaskContext(taskId);
-    if (taskContext?.node?.agent_prompt) {
-      promptSections.push(`NODE_ROLE:\n${taskContext.node.agent_prompt}`);
-    }
-    const taskLayer = buildTaskContextLayer(taskContext);
-    if (taskLayer) {
-      promptSections.push(taskLayer);
+    console.warn('Failed to build prompt:', err.message);
+    const fallbackSections = [];
+    try {
+      const taskContext = await fetchTaskContext(taskId);
+      if (taskContext?.node?.agent_prompt) {
+        fallbackSections.push(`NODE_ROLE:\n${taskContext.node.agent_prompt}`);
+      }
+    } catch {
+      // ignore
     }
     if (imageLayer) {
-      promptSections.push(imageLayer);
+      fallbackSections.push(imageLayer);
     }
-    promptSections.push(`REQUEST:\n${normalizedRequest}`);
-    return promptSections.join('\n\n');
+    fallbackSections.push(`REQUEST:\n${normalizedRequest}`);
+    return fallbackSections.join('\n\n');
   }
 }
 
