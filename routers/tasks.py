@@ -234,6 +234,52 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
             },
         }
 
+    endpoint_guidance = {
+        "task": {
+            "method": "GET",
+            "description": "Fetch the full task record, including title, description, status, and metadata."
+        },
+        "comments": {
+            "method": "GET/POST",
+            "description": "GET comments for context and POST `{body, author}` to create a new note."
+        },
+        "attachments": {
+            "method": "GET/POST",
+            "description": "GET attachment list or POST multipart/form-data with a file field to upload proof."
+        },
+        "acceptance": {
+            "method": "GET",
+            "description": "Read acceptance criteria; mark items as passed via PATCH if available."
+        },
+        "runs": {
+            "method": "GET/POST",
+            "description": "GET run history or POST `{node_id, status, summary}` to record a new run."
+        },
+        "project_files": {
+            "method": "GET",
+            "description": "List workspace files to locate code referenced by the task."
+        },
+        "git_status": {
+            "method": "GET",
+            "description": "Inspect git status to know what is staged, modified, or untracked."
+        },
+        "help": {
+            "method": "GET",
+            "description": "Call `/help/agents` for expert guidance on using the API."
+        },
+    }
+    described_endpoints = []
+    raw_endpoints = mcp_info.get("endpoints") or {}
+    for name, path in raw_endpoints.items():
+        guidance = endpoint_guidance.get(name, {})
+        described_endpoints.append({
+            "name": name,
+            "path": path,
+            "method": guidance.get("method", "GET"),
+            "description": guidance.get("description", "Call this endpoint for more context."),
+        })
+    help_url = os.getenv("APP_URL", "https://wfhub.localhost") + "/help/agents"
+
     prompt_payload = {
         "project": {
             "name": project_info.get("name"),
@@ -253,8 +299,9 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
         },
         "mcp": {
             "notes": mcp_info.get("notes"),
-            "endpoints": mcp_info.get("endpoints"),
+            "endpoints": described_endpoints,
             "reporting": mcp_info.get("reporting"),
+            "help": help_url,
         } if mcp_info else None,
         "discovery": discovery,
         "acceptance_criteria": [
