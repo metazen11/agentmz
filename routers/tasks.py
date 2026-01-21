@@ -275,7 +275,7 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
         guidance = endpoint_guidance.get(name, {})
         produced_path = path
         if not produced_path.startswith("http"):
-            produced_path = main_api.rstrip("/") + (path.startswith("/") ? "" : "/") + path
+        produced_path = main_api.rstrip("/") + ("" if path.startswith("/") else "/") + path
         described_endpoints.append({
             "name": name,
             "path": produced_path,
