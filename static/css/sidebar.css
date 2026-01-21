@@ -68,11 +68,8 @@
   white-space: nowrap;
 }
 .project-actions {
-  display: none;
-  gap: 6px;
-}
-.project-list li:hover .project-actions {
   display: flex;
+  gap: 6px;
 }
 .project-actions button {
   font-size: 11px;

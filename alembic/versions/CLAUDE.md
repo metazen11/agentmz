@@ -7,9 +7,13 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1133 | 5:11 PM | 🟣 | Database Migration for Integration Tables Created | ~446 |
-| #1132 | " | 🔵 | Latest Migration Structure and Revision Chain | ~298 |
-| #1122 | 4:55 PM | ⚖️ | Comprehensive Provider-Agnostic External Task Integration Architecture Designed | ~820 |
-| #1119 | 4:50 PM | 🔵 | Database migration found for task acceptance criteria feature | ~401 |
-| #1111 | 4:48 PM | 🔵 | Database migration for task comments and attachments | ~482 |
+| #1118 | 4:50 PM | 🟣 | Multi-Agent Pipeline Database Schema | ~418 |
+| #1116 | 4:49 PM | 🔵 | Database Migration Adds Task Comments and Attachments | ~370 |
+
+### Jan 20, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1193 | 10:26 PM | 🟣 | Node Editor with n8n-style Workflow Routing | ~787 |
+| #1191 | 10:25 PM | 🟣 | Node Editor with n8n-style Workflow Routing | ~533 |
 </claude-mem-context>

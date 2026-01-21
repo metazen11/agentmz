@@ -1,6 +1,6 @@
 """SQLAlchemy models for v2 agentic system."""
 from datetime import datetime
-from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, BigInteger, String, Text, DateTime, ForeignKey, Boolean, Integer
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from database import Base
@@ -87,14 +87,44 @@ class TaskNode(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    # Workflow fields for n8n-style routing
+    pre_hooks = Column(Text, nullable=True)  # JSON array of commands to run BEFORE agent
+    post_hooks = Column(Text, nullable=True)  # JSON array of commands to run AFTER agent
+    pass_node_id = Column(BigInteger, ForeignKey("task_nodes.id", ondelete="SET NULL"), nullable=True)
+    fail_node_id = Column(BigInteger, ForeignKey("task_nodes.id", ondelete="SET NULL"), nullable=True)
+    max_iterations = Column(Integer, default=20, nullable=True)
+
+    # Relationships
     tasks = relationship("Task", back_populates="node")
     runs = relationship("TaskRun", back_populates="node")
 
+    # Self-referential relationships for workflow routing
+    pass_node = relationship(
+        "TaskNode",
+        foreign_keys=[pass_node_id],
+        remote_side=[id],
+        uselist=False,
+    )
+    fail_node = relationship(
+        "TaskNode",
+        foreign_keys=[fail_node_id],
+        remote_side=[id],
+        uselist=False,
+    )
+
     def to_dict(self):
+        import json
         return {
             "id": self.id,
             "name": self.name,
             "agent_prompt": self.agent_prompt,
+            "pre_hooks": json.loads(self.pre_hooks) if self.pre_hooks else [],
+            "post_hooks": json.loads(self.post_hooks) if self.post_hooks else [],
+            "pass_node_id": self.pass_node_id,
+            "pass_node_name": self.pass_node.name if self.pass_node else None,
+            "fail_node_id": self.fail_node_id,
+            "fail_node_name": self.fail_node.name if self.fail_node else None,
+            "max_iterations": self.max_iterations or 20,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -312,22 +312,51 @@
 
 <!-- Settings Modal -->
 <div id="settings-modal" class="modal" style="display:none;">
-  <div class="modal-content">
-    <h3>Settings (.env)</h3>
-    <div class="settings-modal-grid">
-      <input id="settings-filter" type="text" placeholder="Filter settings...">
-      <div class="settings-list" id="settings-list">Loading...</div>
-      <div class="git-row">
-        <label><input type="checkbox" id="restart-main" checked> Restart main</label>
-        <label><input type="checkbox" id="restart-aider" checked> Restart aider</label>
-        <label><input type="checkbox" id="restart-ollama"> Restart ollama</label>
-        <label><input type="checkbox" id="restart-db"> Restart db</label>
-      </div>
-      <div class="modal-actions">
-        <button onclick="applySettings()">Apply</button>
-        <button class="secondary" onclick="hideSettingsModal()">Close</button>
+  <div class="modal-content" style="min-width: 600px;">
+    <div class="modal-header">
+      <h3>Settings</h3>
+      <button class="secondary" onclick="hideSettingsModal()" style="padding: 4px 10px;">×</button>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="settings-tabs">
+      <button class="settings-tab active" onclick="switchSettingsTab('env')" data-tab="env">Environment</button>
+      <button class="settings-tab" onclick="switchSettingsTab('nodes')" data-tab="nodes">Nodes</button>
+    </div>
+
+    <!-- Environment Tab Content -->
+    <div id="settings-tab-env" class="settings-tab-content active">
+      <div class="settings-modal-grid">
+        <input id="settings-filter" type="text" placeholder="Filter settings...">
+        <div class="settings-list" id="settings-list">Loading...</div>
+        <div class="git-row">
+          <label><input type="checkbox" id="restart-main" checked> Restart main</label>
+          <label><input type="checkbox" id="restart-aider" checked> Restart aider</label>
+          <label><input type="checkbox" id="restart-ollama"> Restart ollama</label>
+          <label><input type="checkbox" id="restart-db"> Restart db</label>
+        </div>
+        <div class="modal-actions">
+          <button onclick="applySettings()">Apply</button>
+        </div>
       </div>
     </div>
+
+    <!-- Nodes Tab Content -->
+    <div id="settings-tab-nodes" class="settings-tab-content">
+      <div class="node-editor-grid">
+        <!-- Node List (Left Panel) -->
+        <div class="node-list-container">
+          <div class="node-list" id="node-list">Loading...</div>
+          <button class="node-add-btn" onclick="createNewNode()">+ New Node</button>
+        </div>
+
+        <!-- Node Editor (Right Panel) -->
+        <div id="node-editor-panel">
+          <div class="node-editor-placeholder">Select a node to edit</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -354,7 +383,7 @@ import { COOKIE_KEYS, setCookie, getCookie, deleteCookie, getWorkspaceName, getD
 import { renderMarkdown } from '/static/js/markdown.js';
 import { getResizedImageBase64 } from '/static/js/images.js';
 import { highlightJson, getToolCallSummary, renderToolCalls } from '/static/js/tools.js';
-import { state, setProjects, setTasks, setSelectedProject, setSelectedTask, setAvailableModels, setIsModelSwitching, setReferencedFiles, setAttachedImages, setEnvEntries, setEditingProjectId, setEditingTaskId, setCurrentLogTab, setVisionModel } from '/static/js/state.js';
+import { state, setProjects, setTasks, setSelectedProject, setSelectedTask, setAvailableModels, setIsModelSwitching, setReferencedFiles, setAttachedImages, setEnvEntries, setEditingProjectId, setEditingTaskId, setCurrentLogTab, setVisionModel, setCurrentSettingsTab, setNodes, setSelectedNodeId } from '/static/js/state.js';
 import { showIntegrationWizard, hideIntegrationWizard } from '/static/js/integrations.js';
 
 // ============================================================================
@@ -906,6 +935,10 @@ function renderProjects() {
 }
 
 async function selectProject(projectId) {
+  // Hide tooltip when selecting project
+  const globalTooltipEl = document.getElementById('global-tooltip');
+  if (globalTooltipEl) globalTooltipEl.classList.remove('visible');
+
   console.log('selectProject called with:', projectId);
   const project = state.projects.find(p => p.id === projectId);
   if (!project) {
@@ -980,7 +1013,9 @@ function renderTasks() {
       <div class="task-row">
         <span class="task-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
         <div class="task-actions">
-          <button class="btn-small" onclick="event.stopPropagation(); runTaskFromList(${t.id})">Run</button>
+          <button onclick="event.stopPropagation(); openTaskEditor(${t.id})">Edit</button>
+          <button class="delete" onclick="event.stopPropagation(); deleteTask(${t.id})">Delete</button>
+          <button onclick="event.stopPropagation(); runTaskFromList(${t.id})">Run</button>
         </div>
       </div>
       ${renderTooltip(tooltipRows)}
@@ -1000,6 +1035,10 @@ function selectTask(taskId) {
 }
 
 function openTaskEditor(taskId) {
+  // Hide tooltip when opening editor
+  const globalTooltipEl = document.getElementById('global-tooltip');
+  if (globalTooltipEl) globalTooltipEl.classList.remove('visible');
+
   selectTask(taskId);
   showEditTaskModal(taskId);
 }
@@ -1391,6 +1430,329 @@ function showSettingsModal() {
 
 function hideSettingsModal() {
   document.getElementById('settings-modal').style.display = 'none';
+}
+
+// ============================================================================
+// Node Editor Functions
+// ============================================================================
+
+function switchSettingsTab(tab) {
+  // Update tab buttons
+  document.querySelectorAll('.settings-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+
+  // Update tab content visibility
+  document.getElementById('settings-tab-env').classList.toggle('active', tab === 'env');
+  document.getElementById('settings-tab-nodes').classList.toggle('active', tab === 'nodes');
+
+  // Update state
+  setCurrentSettingsTab(tab);
+
+  // Load data for the active tab
+  if (tab === 'nodes') {
+    loadNodesForEditor();
+  }
+}
+
+async function loadNodesForEditor() {
+  const nodeListEl = document.getElementById('node-list');
+  nodeListEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${MAIN_API}/nodes`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const nodes = await res.json();
+    setNodes(nodes);
+    renderNodeList();
+  } catch (err) {
+    nodeListEl.textContent = `Failed to load nodes: ${err.message}`;
+  }
+}
+
+function renderNodeList() {
+  const nodeListEl = document.getElementById('node-list');
+  if (!state.nodes || state.nodes.length === 0) {
+    nodeListEl.innerHTML = '<div style="color: #6b7280; padding: 8px;">No nodes</div>';
+    return;
+  }
+  nodeListEl.innerHTML = state.nodes.map(node => {
+    const isSelected = state.selectedNodeId === node.id;
+    const hasRouting = node.pass_node_id || node.fail_node_id;
+    return `
+      <div class="node-list-item ${isSelected ? 'selected' : ''}"
+           onclick="selectNode(${node.id})">
+        <span>${node.name}</span>
+        ${hasRouting ? '<span class="routing-indicator">→</span>' : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function selectNode(nodeId) {
+  setSelectedNodeId(nodeId);
+  renderNodeList();
+  renderNodeEditor();
+}
+
+function renderNodeEditor() {
+  const panelEl = document.getElementById('node-editor-panel');
+  const node = state.nodes.find(n => n.id === state.selectedNodeId);
+
+  if (!node) {
+    panelEl.innerHTML = '<div class="node-editor-placeholder">Select a node to edit</div>';
+    return;
+  }
+
+  // Build routing dropdowns (exclude current node)
+  const routingOptions = state.nodes
+    .filter(n => n.id !== node.id)
+    .map(n => `<option value="${n.id}">${n.name}</option>`)
+    .join('');
+
+  panelEl.innerHTML = `
+    <form class="node-editor-form" onsubmit="saveNode(event)">
+      <div class="node-form-row">
+        <label for="node-name">Name</label>
+        <input type="text" id="node-name" value="${escapeHtml(node.name)}" required>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-prompt">Agent Prompt</label>
+        <textarea id="node-prompt" rows="6">${escapeHtml(node.agent_prompt)}</textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-pre-hooks">Pre Hooks (one per line)</label>
+        <textarea id="node-pre-hooks" rows="3" placeholder="npm install&#10;./setup.sh">${(node.pre_hooks || []).join('\n')}</textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-post-hooks">Post Hooks (one per line)</label>
+        <textarea id="node-post-hooks" rows="3" placeholder="npm test&#10;./cleanup.sh">${(node.post_hooks || []).join('\n')}</textarea>
+      </div>
+
+      <div class="node-form-row-inline">
+        <div class="node-form-row">
+          <label for="node-pass">On Success</label>
+          <select id="node-pass">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+        <div class="node-form-row">
+          <label for="node-fail">On Failure</label>
+          <select id="node-fail">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-max-iter">Max Iterations</label>
+        <input type="number" id="node-max-iter" min="1" max="100" value="${node.max_iterations || 20}">
+      </div>
+
+      <div class="node-form-actions">
+        <button type="submit">Save</button>
+        <button type="button" class="secondary" onclick="cancelNodeEdit()">Cancel</button>
+        <button type="button" class="secondary delete" onclick="deleteNode(${node.id})">Delete</button>
+      </div>
+    </form>
+  `;
+
+  // Set dropdown values after rendering
+  document.getElementById('node-pass').value = node.pass_node_id || '';
+  document.getElementById('node-fail').value = node.fail_node_id || '';
+}
+
+function createNewNode() {
+  setSelectedNodeId(null);
+  renderNodeList();
+
+  const panelEl = document.getElementById('node-editor-panel');
+  const routingOptions = state.nodes
+    .map(n => `<option value="${n.id}">${n.name}</option>`)
+    .join('');
+
+  panelEl.innerHTML = `
+    <form class="node-editor-form" onsubmit="saveNewNode(event)">
+      <div class="node-form-row">
+        <label for="node-name">Name</label>
+        <input type="text" id="node-name" value="" placeholder="new_node" required>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-prompt">Agent Prompt</label>
+        <textarea id="node-prompt" rows="6" placeholder="You are an agent that..."></textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-pre-hooks">Pre Hooks (one per line)</label>
+        <textarea id="node-pre-hooks" rows="3" placeholder="npm install&#10;./setup.sh"></textarea>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-post-hooks">Post Hooks (one per line)</label>
+        <textarea id="node-post-hooks" rows="3" placeholder="npm test&#10;./cleanup.sh"></textarea>
+      </div>
+
+      <div class="node-form-row-inline">
+        <div class="node-form-row">
+          <label for="node-pass">On Success</label>
+          <select id="node-pass">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+        <div class="node-form-row">
+          <label for="node-fail">On Failure</label>
+          <select id="node-fail">
+            <option value="">None</option>
+            ${routingOptions}
+          </select>
+        </div>
+      </div>
+
+      <div class="node-form-row">
+        <label for="node-max-iter">Max Iterations</label>
+        <input type="number" id="node-max-iter" min="1" max="100" value="20">
+      </div>
+
+      <div class="node-form-actions">
+        <button type="submit">Create</button>
+        <button type="button" class="secondary" onclick="cancelNodeEdit()">Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
+function cancelNodeEdit() {
+  setSelectedNodeId(null);
+  renderNodeList();
+  document.getElementById('node-editor-panel').innerHTML =
+    '<div class="node-editor-placeholder">Select a node to edit</div>';
+}
+
+function parseHooks(text) {
+  return text.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+}
+
+async function saveNode(event) {
+  event.preventDefault();
+
+  const nodeId = state.selectedNodeId;
+  if (!nodeId) return;
+
+  const name = document.getElementById('node-name').value.trim();
+  const agentPrompt = document.getElementById('node-prompt').value;
+  const preHooks = parseHooks(document.getElementById('node-pre-hooks').value);
+  const postHooks = parseHooks(document.getElementById('node-post-hooks').value);
+  const passNodeId = parseInt(document.getElementById('node-pass').value) || 0;
+  const failNodeId = parseInt(document.getElementById('node-fail').value) || 0;
+  const maxIterations = parseInt(document.getElementById('node-max-iter').value) || 20;
+
+  try {
+    const res = await fetch(`${MAIN_API}/nodes/${nodeId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        agent_prompt: agentPrompt,
+        pre_hooks: preHooks,
+        post_hooks: postHooks,
+        pass_node_id: passNodeId,
+        fail_node_id: failNodeId,
+        max_iterations: maxIterations,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error: ${data.detail || 'Failed to save node'}`);
+      return;
+    }
+
+    await loadNodes();
+    selectNode(nodeId);
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function saveNewNode(event) {
+  event.preventDefault();
+
+  const name = document.getElementById('node-name').value.trim();
+  const agentPrompt = document.getElementById('node-prompt').value;
+  const preHooks = parseHooks(document.getElementById('node-pre-hooks').value);
+  const postHooks = parseHooks(document.getElementById('node-post-hooks').value);
+  const passNodeId = parseInt(document.getElementById('node-pass').value) || 0;
+  const failNodeId = parseInt(document.getElementById('node-fail').value) || 0;
+  const maxIterations = parseInt(document.getElementById('node-max-iter').value) || 20;
+
+  if (!name) {
+    alert('Node name is required');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${MAIN_API}/nodes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        agent_prompt: agentPrompt || '',
+        pre_hooks: preHooks,
+        post_hooks: postHooks,
+        pass_node_id: passNodeId,
+        fail_node_id: failNodeId,
+        max_iterations: maxIterations,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error: ${data.detail || 'Failed to create node'}`);
+      return;
+    }
+
+    const newNode = await res.json();
+    await loadNodes();
+    selectNode(newNode.id);
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function deleteNode(nodeId) {
+  const node = state.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+
+  if (!confirm(`Delete node "${node.name}"? This cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`${MAIN_API}/nodes/${nodeId}`, {
+      method: 'DELETE',
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error: ${data.detail || 'Failed to delete node'}`);
+      return;
+    }
+
+    setSelectedNodeId(null);
+    await loadNodes();
+    document.getElementById('node-editor-panel').innerHTML =
+      '<div class="node-editor-placeholder">Select a node to edit</div>';
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
 }
 
 function setupImageDropzone() {
@@ -2666,7 +3028,7 @@ async function runAgentRequest(requestText, task = null, imageLayer = '', option
       }
       if (task?.id && runId) {
         await updateTaskRun(task.id, runId, {
-          status: 'completed',
+          status: 'pass',
           summary: data.summary || null,
           tool_calls: data.tool_calls || null,
           finished_at: new Date().toISOString()
@@ -2679,7 +3041,7 @@ async function runAgentRequest(requestText, task = null, imageLayer = '', option
       statusEl.className = 'status error';
       if (task?.id && runId) {
         await updateTaskRun(task.id, runId, {
-          status: 'failed',
+          status: 'fail',
           error: data.error || data.summary || 'Unknown error',
           tool_calls: data.tool_calls || null,
           finished_at: new Date().toISOString()
@@ -2694,7 +3056,7 @@ async function runAgentRequest(requestText, task = null, imageLayer = '', option
     statusEl.className = 'status error';
     if (task?.id && runId) {
       await updateTaskRun(task.id, runId, {
-        status: 'failed',
+        status: 'fail',
         error: err.message,
         finished_at: new Date().toISOString()
       });
@@ -3060,7 +3422,16 @@ Object.assign(window, {
   pushBranch,
   addRemote,
   applySettings,
-  getEditingTaskId
+  getEditingTaskId,
+  // Node Editor Functions
+  switchSettingsTab,
+  loadNodesForEditor,
+  selectNode,
+  createNewNode,
+  cancelNodeEdit,
+  saveNode,
+  saveNewNode,
+  deleteNode
 });
 
 if (visionModelSelectEl) {

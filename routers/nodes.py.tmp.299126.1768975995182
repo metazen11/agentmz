@@ -63,13 +63,13 @@ def get_default_node(db: Session) -> TaskNode:
     return node
 
 
-@router.get("", response_model=List[NodeResponse])
+@router.get("/nodes", response_model=List[NodeResponse])
 def list_nodes(db: Session = Depends(get_db)):
     nodes = db.query(TaskNode).order_by(TaskNode.id.asc()).all()
     return [node.to_dict() for node in nodes]
 
 
-@router.get("/{node_id}", response_model=NodeResponse)
+@router.get("/nodes/{node_id}", response_model=NodeResponse)
 def get_node(node_id: int, db: Session = Depends(get_db)):
     node = get_node_or_404(node_id, db)
     return node.to_dict()
@@ -94,7 +94,7 @@ def validate_routing(node_id: int, pass_node_id: Optional[int], fail_node_id: Op
                 raise HTTPException(status_code=400, detail=f"Fail node {fail_node_id} not found")
 
 
-@router.post("", response_model=NodeResponse)
+@router.post("/nodes", response_model=NodeResponse)
 def create_node(node: NodeCreate, db: Session = Depends(get_db)):
     name = node.name.strip()
     if not name:
@@ -131,7 +131,7 @@ def create_node(node: NodeCreate, db: Session = Depends(get_db)):
     return db_node.to_dict()
 
 
-@router.patch("/{node_id}", response_model=NodeResponse)
+@router.patch("/nodes/{node_id}", response_model=NodeResponse)
 def update_node(node_id: int, update: NodeUpdate, db: Session = Depends(get_db)):
     node = get_node_or_404(node_id, db)
 
@@ -191,7 +191,7 @@ def update_node(node_id: int, update: NodeUpdate, db: Session = Depends(get_db))
     return node.to_dict()
 
 
-@router.delete("/{node_id}")
+@router.delete("/nodes/{node_id}")
 def delete_node(node_id: int, db: Session = Depends(get_db)):
     node = get_node_or_404(node_id, db)
     task_count = db.query(Task).filter(Task.node_id == node_id).count()

@@ -55,9 +55,6 @@ def help_service_for_agents(
                 "Fetch more details only when objective/criteria require it. "
                 "Use the endpoints above with the provided identifiers."
             ),
-            "run_history": (
-                "After each run, post a comment referencing tests and screenshots."
-            ),
         },
     }
     if project:

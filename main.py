@@ -60,6 +60,49 @@ app.include_router(operations.router, tags=["operations"])
 app.include_router(logs.router, tags=["logs"])
 app.include_router(help_agents.router, tags=["help"])
 
+@app.get("/health/full")
+async def health_full():
+    """Full health check including all services."""
+    import httpx
+
+    aider_status = {"status": "unknown"}
+    ollama_status = {"status": "unknown"}
+
+    # Check aider-api
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            aider_res = await client.get("http://wfhub-v2-aider-api:8001/health")
+            if aider_res.status_code == 200:
+                aider_status = {"status": "ok"}
+            else:
+                aider_status = {"status": "error", "code": aider_res.status_code}
+    except Exception as e:
+        aider_status = {"status": "error", "error": str(e)}
+
+    # Check ollama
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            ollama_res = await client.get("http://wfhub-v2-ollama:11434/api/tags")
+            if ollama_res.status_code == 200:
+                ollama_status = {"status": "ok"}
+            else:
+                ollama_status = {"status": "error", "code": ollama_res.status_code}
+    except Exception as e:
+        ollama_status = {"status": "error", "error": str(e)}
+
+    # Overall status
+    all_ok = aider_status.get("status") == "ok" and ollama_status.get("status") == "ok"
+
+    return {
+        "overall_status": "ok" if all_ok else "degraded",
+        "status": "ok",
+        "service": "main-api",
+        "version": "2.0.0",
+        "aider_api": aider_status,
+        "ollama": ollama_status,
+    }
+
+
 @app.get("/")
 def root():
     return FileResponse("chat.html")
