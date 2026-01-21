@@ -148,8 +148,12 @@ def build_task_context_summary(task: Task, project: Project, db: Session) -> dic
     for item in git_info.get("working_changes") or []:
         path = item.get("path")
         status = item.get("status")
-        if path and status:
-            working_changes.append(f"{status} {path}")
+        if not path or not status:
+            continue
+        # Skip workspace directories (runtime state) from git info
+        if path.startswith("workspaces/"):
+            continue
+        working_changes.append(f"{status} {path}")
         if len(working_changes) >= max_files:
             break
 
