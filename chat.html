@@ -3073,13 +3073,8 @@ async function buildTaskPromptPreview(taskId = null) {
   const requestText = buildTaskRequest(task);
   const imageLayer = await buildVisionImageLayer();
   const prompt = await buildPromptForRequest(targetId, requestText, imageLayer, true);
-  const rawContext = await fetchTaskContext(targetId);
-  const contextLayer = rawContext
-    ? `TASK_CONTEXT:\n${JSON.stringify(rawContext, null, 2)}`
-    : '';
-  const previewText = contextLayer ? `${prompt}\n\n${contextLayer}` : prompt;
   if (taskRunPreviewEl) {
-    taskRunPreviewEl.value = previewText;
+    taskRunPreviewEl.value = prompt;
   }
   return prompt;
 }

@@ -202,6 +202,7 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
     mcp_info = context.get("mcp") or {}
 
     system_info = os.getenv("APP_URL") or "https://wfhub.localhost"
+    main_api = os.getenv("MAIN_API_URL") or "http://localhost:8002"
     request_body = payload.request.strip() or "Execute the task using the provided context."
 
     image_context = None
@@ -272,13 +273,16 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
     raw_endpoints = mcp_info.get("endpoints") or {}
     for name, path in raw_endpoints.items():
         guidance = endpoint_guidance.get(name, {})
+        produced_path = path
+        if not produced_path.startswith("http"):
+            produced_path = main_api.rstrip("/") + (path.startswith("/") ? "" : "/") + path
         described_endpoints.append({
             "name": name,
-            "path": path,
+            "path": produced_path,
             "method": guidance.get("method", "GET"),
             "description": guidance.get("description", "Call this endpoint for more context."),
         })
-    help_url = os.getenv("APP_URL", "https://wfhub.localhost") + "/help/agents"
+    help_url = main_api.rstrip("/") + "/help/agents"
 
     prompt_payload = {
         "project": {
@@ -338,6 +342,8 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
 
     compact_payload = _compact(prompt_payload)
     prompt = json.dumps(compact_payload, indent=2)
+    if request_body:
+        prompt = f"{prompt}\n\nREQUEST:\n{request_body}"
     return {"prompt": prompt}
 
 
