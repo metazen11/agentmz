@@ -38,6 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import ssl
+import re
 import time
 
 
@@ -149,18 +150,38 @@ class Config:
             and not d.startswith(".")
         ]
 
+    def _normalize_workspace_input(self, workspace: str) -> str:
+        """Normalize workspace input to a safe relative path under workspaces_dir."""
+        if not workspace:
+            return ""
+        cleaned = str(workspace).replace("\\", "/").strip()
+        if cleaned.startswith("[%root%]"):
+            return cleaned
+        marker = "/workspaces/"
+        lowered = cleaned.lower()
+        idx = lowered.rfind(marker)
+        if idx != -1:
+            return cleaned[idx + len(marker):].strip("/")
+        if os.path.isabs(cleaned) or re.match(r"^[A-Za-z]:/", cleaned):
+            return os.path.basename(cleaned)
+        cleaned = re.sub(r"^\.?/?(workspaces/)?", "", cleaned)
+        return cleaned.strip("/")
+
     def set_workspace(self, workspace: str) -> bool:
         """Set the current workspace. Returns True if valid."""
+        normalized = self._normalize_workspace_input(workspace)
+        if not normalized:
+            return False
         # Handle [%root%] variable
-        if workspace.startswith("[%root%]"):
-            resolved = self.resolve_workspace_path(workspace)
+        if normalized.startswith("[%root%]"):
+            resolved = self.resolve_workspace_path(normalized)
             if os.path.isdir(resolved):
-                self.current_workspace = workspace
+                self.current_workspace = normalized
                 return True
             return False
-        workspace_path = os.path.join(self.workspaces_dir, workspace)
+        workspace_path = self.resolve_workspace_path(normalized)
         if os.path.isdir(workspace_path):
-            self.current_workspace = workspace
+            self.current_workspace = normalized
             return True
         return False
 
@@ -177,18 +198,19 @@ class Config:
         Returns:
             Absolute path to the workspace directory
         """
+        normalized = self._normalize_workspace_input(workspace)
+
         # Handle [%root%] variable for self-editing
-        if workspace.startswith("[%root%]"):
+        if normalized.startswith("[%root%]"):
             # Get PROJECT_ROOT from env, fallback to parent of scripts dir
             root = os.environ.get("PROJECT_ROOT", str(Path(__file__).parent.parent))
-            return workspace.replace("[%root%]", root)
+            return normalized.replace("[%root%]", root)
 
-        # Handle absolute paths
-        if os.path.isabs(workspace):
-            return workspace
+        if not normalized:
+            return self.workspaces_dir
 
         # Default: join with workspaces_dir
-        return os.path.join(self.workspaces_dir, workspace)
+        return os.path.join(self.workspaces_dir, normalized)
 
 
 # Global config instance

@@ -97,7 +97,7 @@ services:
     env_file:
       - ../.env
     environment:
-      - OLLAMA_API_BASE=http://wfhub-v2-ollama:11434
+      - OLLAMA_API_BASE=http://wfhub-v2-main-api:8002/ollama
       - PYTHONHTTPSVERIFY=0
       - PORT=${AIDER_API_PORT}
       - WORKSPACES_DIR=/v2/workspaces

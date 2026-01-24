@@ -197,6 +197,16 @@
   letter-spacing: 0.04em;
   margin-bottom: 8px;
 }
+.details-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.details-title-row .details-title {
+  margin-bottom: 0;
+}
 .task-parent-row {
   font-size: 12px;
   color: #aaa;
@@ -230,7 +240,8 @@
   color: #666;
 }
 .comment-list,
-.attachment-list {
+.attachment-list,
+.subtask-list {
   max-height: 180px;
   overflow-y: auto;
   border: 1px solid #333;
@@ -258,6 +269,26 @@
 }
 .criteria-item:last-child {
   border-bottom: none;
+}
+.subtask-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #2a2a2a;
+  cursor: pointer;
+}
+.subtask-item:last-child {
+  border-bottom: none;
+}
+.subtask-title {
+  color: #e5e7eb;
+  font-size: 12px;
+}
+.subtask-meta {
+  color: #9ca3af;
+  font-size: 11px;
+  white-space: nowrap;
 }
 .criteria-main {
   display: flex;

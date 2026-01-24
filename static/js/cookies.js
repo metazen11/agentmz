@@ -27,8 +27,14 @@ export function getWorkspaceName(path) {
   if (path.startsWith('[%root%]')) {
     return path;
   }
-  // Remove trailing slashes and get last segment
-  const cleaned = path.replace(/\/+$/, '');
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '');
+  const marker = '/workspaces/';
+  const idx = normalized.toLowerCase().lastIndexOf(marker);
+  if (idx !== -1) {
+    const rel = normalized.slice(idx + marker.length).replace(/^\/+/, '');
+    return rel || 'poc';
+  }
+  const cleaned = normalized.replace(/^\.?\/?(workspaces\/)?/, '').replace(/\/+$/, '');
   const parts = cleaned.split('/').filter(p => p && p !== '.');
   return parts.pop() || 'poc';
 }

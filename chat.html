@@ -150,10 +150,12 @@
     <h3>New Task</h3>
     <input type="text" id="new-task-title" placeholder="Task title">
     <textarea id="new-task-desc" placeholder="Description (optional)"></textarea>
-    <label style="font-size:12px; color:#aaa; margin-top:8px;">Parent Task (optional)</label>
-    <select id="new-task-parent-id">
-      <option value="">No parent</option>
-    </select>
+    <div id="new-task-parent-row">
+      <label style="font-size:12px; color:#aaa; margin-top:8px;">Parent Task (optional)</label>
+      <select id="new-task-parent-id">
+        <option value="">No parent</option>
+      </select>
+    </div>
     <label style="font-size:12px; color:#aaa; margin-top:8px;">Node</label>
     <select id="new-task-node">
       <option value="">Loading...</option>
@@ -192,7 +194,6 @@
     <div id="edit-task-parent-row" class="task-parent-row" style="display:none;">
       Parent: <a href="#" id="edit-task-parent-link"></a>
     </div>
-    <button class="btn-small" onclick="createSubtask(getEditingTaskId())">+ Add Subtask</button>
     <label style="font-size:12px; color:#aaa; margin-top:8px;">Node</label>
     <select id="edit-task-node">
       <option value="">Loading...</option>
@@ -213,6 +214,14 @@
       <div class="comment-actions">
         <button onclick="addAcceptanceCriteria()">Add Criteria</button>
       </div>
+    </div>
+
+    <div class="details-panel">
+      <div class="details-title-row">
+        <div class="details-title">Subtasks</div>
+        <button class="btn-small" onclick="createSubtask(getEditingTaskId())">+ Add Subtask</button>
+      </div>
+      <div id="subtask-list" class="subtask-list">No subtasks</div>
     </div>
 
     <div class="details-panel">

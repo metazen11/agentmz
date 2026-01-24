@@ -12,6 +12,10 @@ aicoder() {
   "${script_dir}/run_aider_local.sh" "$@"
 }
 
+run_aider_local() {
+  "${script_dir}/run_aider_local.sh" "$@"
+}
+
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   cat <<EOF
 To register the 'aicoder' command in your current shell:

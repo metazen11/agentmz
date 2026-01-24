@@ -48,9 +48,22 @@ done
 echo "=== v2 Coding Agent Stack ==="
 echo ""
 
-# Load environment
+# Load environment without eval (handles regex values safely)
 if [ -f .env ]; then
-    source .env
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ''|\#*) continue ;;
+        esac
+        if [[ "$line" == *"="* ]]; then
+            key="${line%%=*}"
+            value="${line#*=}"
+            key="${key#"${key%%[![:space:]]*}"}"
+            key="${key%"${key##*[![:space:]]}"}"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            export "${key}=${value}"
+        fi
+    done < .env
 fi
 
 # Override DEFAULT_WORKSPACE if specified via CLI

@@ -4,6 +4,7 @@ import os
 import json
 import time
 import itertools
+from datetime import datetime, timezone
 from collections import deque
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -84,6 +85,8 @@ def _extract_ollama_output_snippet(snippet_text: str) -> str:
 
 
 async def append_ollama_http_log(line: str) -> None:
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    line = f"[{timestamp}] {line}"
     async with OLLAMA_HTTP_LOG_LOCK:
         OLLAMA_HTTP_LOG_BUFFER.append(line)
         stale = []

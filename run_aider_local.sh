@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/mnt/c/dropbox/_coding/agentic/v2"
+ROOT_DIR="/mnt/c/dropbox/_coding/agentmz"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
@@ -36,12 +36,102 @@ if [ -f ".env" ]; then
   set -a
   . ".env"
   set +a
-  # For local development, use the local Ollama URL (exposed port)
-  if [ -n "${OLLAMA_API_BASE_LOCAL:-}" ]; then
-    export OLLAMA_API_BASE="$OLLAMA_API_BASE_LOCAL"
-    export OLLAMA_URL="$OLLAMA_API_BASE_LOCAL"
-  fi
 fi
+check_ollama_base() {
+  local base="$1"
+  if [ -z "$base" ]; then
+    return 1
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    return 0
+  fi
+  local url="${base%/}/api/tags"
+  if [[ "$base" == https://* ]]; then
+    curl -fsSk --max-time 2 "$url" >/dev/null 2>&1
+  else
+    curl -fsS --max-time 2 "$url" >/dev/null 2>&1
+  fi
+}
+
+resolve_ollama_base() {
+  local candidates=()
+  if [ -n "${override_ollama_base:-}" ]; then
+    candidates+=("$override_ollama_base")
+  fi
+  if [ -n "${OLLAMA_API_BASE_LOCAL:-}" ]; then
+    candidates+=("$OLLAMA_API_BASE_LOCAL")
+  fi
+  if [ -n "${OLLAMA_API_BASE:-}" ]; then
+    candidates+=("$OLLAMA_API_BASE")
+  fi
+  candidates+=("http://localhost:8002/ollama" "http://localhost:11435" "https://wfhub.localhost/ollama" "http://localhost:11434")
+
+  for base in "${candidates[@]}"; do
+    if check_ollama_base "$base"; then
+      echo "$base"
+      return 0
+    fi
+  done
+
+  for base in "${candidates[@]}"; do
+    if [ -n "$base" ]; then
+      echo "$base"
+      return 0
+    fi
+  done
+  return 1
+}
+
+list_ollama_models() {
+  if ! command -v curl >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  local url="${OLLAMA_API_BASE%/}/api/tags"
+  local payload=""
+  if [[ "${OLLAMA_API_BASE:-}" == https://* ]]; then
+    payload="$(curl -fsSk --max-time 2 "$url" 2>/dev/null || true)"
+  else
+    payload="$(curl -fsS --max-time 2 "$url" 2>/dev/null || true)"
+  fi
+  if [ -z "$payload" ]; then
+    return 0
+  fi
+  printf '%s' "$payload" | python3 - <<'PY' 2>/dev/null || true
+import json,sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for model in data.get("models", []):
+    name = model.get("name")
+    if name:
+        print(name)
+PY
+}
+
+model_exists() {
+  local model="$1"
+  if [ -z "$model" ]; then
+    return 1
+  fi
+  printf '%s\n' "$AVAILABLE_MODELS" | grep -Fx "$model" >/dev/null 2>&1
+}
+
+normalize_model_name() {
+  local model="$1"
+  if [ -z "$model" ]; then
+    echo ""
+    return
+  fi
+  if [[ "$model" == ollama_chat/* ]]; then
+    echo "${model#ollama_chat/}"
+    return
+  fi
+  echo "$model"
+}
 
 has_model=false
 has_subtree_only=false
@@ -106,12 +196,41 @@ done
 
 set -- "${args[@]}"
 
+resolved_base="$(resolve_ollama_base || true)"
+if [ -n "$resolved_base" ]; then
+  export OLLAMA_API_BASE="$resolved_base"
+  export OLLAMA_URL="$resolved_base"
+fi
+
+if [ -n "$override_ollama_base" ] && [ -n "$resolved_base" ] && [ "$override_ollama_base" != "$resolved_base" ]; then
+  echo "Warning: override Ollama base unreachable; using $resolved_base" >&2
+fi
+
+if [ -n "${OLLAMA_API_BASE:-}" ]; then
+  echo "Using OLLAMA_API_BASE=$OLLAMA_API_BASE"
+fi
+
 if [ -n "$override_model" ]; then
   export AIDER_MODEL="$override_model"
 fi
-if [ -n "$override_ollama_base" ]; then
-  export OLLAMA_API_BASE="$override_ollama_base"
-  export OLLAMA_URL="$override_ollama_base"
+
+AVAILABLE_MODELS="$(list_ollama_models)"
+if [ "$has_model" = false ] && [ -z "$override_model" ]; then
+  requested_model="${AIDER_MODEL:-}"
+  fallback_model="${AGENT_MODEL:-}"
+  requested_base="$(normalize_model_name "$requested_model")"
+  fallback_base="$(normalize_model_name "$fallback_model")"
+
+  if [ -n "$requested_base" ] && model_exists "$requested_base"; then
+    export AIDER_MODEL="ollama_chat/$requested_base"
+  elif [ -n "$fallback_base" ] && model_exists "$fallback_base"; then
+    export AIDER_MODEL="ollama_chat/$fallback_base"
+  elif model_exists "qwen3:1.7b"; then
+    export AIDER_MODEL="ollama_chat/qwen3:1.7b"
+  elif [ -n "$AVAILABLE_MODELS" ]; then
+    first_model="$(printf '%s\n' "$AVAILABLE_MODELS" | head -n 1)"
+    export AIDER_MODEL="ollama_chat/$first_model"
+  fi
 fi
 
 if [ "$has_model" = false ] && [ -n "${AIDER_MODEL:-}" ]; then

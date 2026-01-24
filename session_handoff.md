@@ -1065,3 +1065,71 @@ Implemented provider-agnostic external task import system:
 
 ### Tests
 - Not run (prompt formatting changes only)
+
+---
+
+## Implementation Status (2026-01-23 - Session 36)
+
+### Completed
+- [x] Updated `start.sh` to load `.env` without `source` so regex values don't break startup
+- [x] Created local `.env` from `.env.example` to allow startup
+- [x] Started v2 stack via `./start.sh --no-browser` and verified containers healthy
+
+### Tests
+- Not run (startup only)
+
+---
+
+## Implementation Status (2026-01-24 - Session 37)
+
+### Completed
+- [x] Routed Aider API Ollama traffic through main-api proxy for HTTP logging
+- [x] Added UTC timestamps to `ollama_http` log lines
+
+### Tests
+- `GET /logs/ollama_http` verified timestamped entries after proxy call
+
+---
+
+## Implementation Status (2026-01-24 - Session 38)
+
+### Completed
+- [x] Improved workspace path normalization to handle absolute paths and nested workspaces
+- [x] Updated file-tree workspace display to show relative workspace paths
+- [x] Made frontend workspace name parsing aware of `/workspaces/` paths
+
+### Tests
+- `POST /api/config` with absolute workspace path returned success
+
+---
+
+## Implementation Status (2026-01-24 - Session 39)
+
+### Completed
+- [x] Subtask creation now hides the parent selector while preserving the parent_id
+- [x] New task modal clears pending parent id on close/submit to avoid leaks
+
+### Tests
+- Not run (UI behavior change)
+
+---
+
+## Implementation Status (2026-01-24 - Session 40)
+
+### Completed
+- [x] Moved “Add Subtask” button above the comments section
+- [x] Added a Subtasks panel in the edit task modal with one-row-per-subtask list
+
+### Tests
+- Not run (UI layout change)
+
+---
+
+## Implementation Status (2026-01-24 - Session 41)
+
+### Completed
+- [x] Made `run_aider_local.sh` choose a reachable Ollama base and auto-pick an available model
+- [x] Added `run_aider_local` shell function to `wrapper_init.sh` for command use
+
+### Tests
+- Not run (script changes)

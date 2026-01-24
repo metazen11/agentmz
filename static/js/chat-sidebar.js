@@ -41,10 +41,10 @@ let settingsListEl, settingsFilterEl;
 let restartMainEl, restartAiderEl, restartOllamaEl, restartDbEl;
 let taskCommentsListEl, commentAuthorEl, commentBodyEl, commentIdEl;
 let taskAttachmentsListEl, attachmentFileEl, attachmentUploadedByEl, attachmentCommentIdEl;
-let taskRunsListEl, taskRunPreviewEl;
+let taskRunsListEl, taskRunPreviewEl, subtaskListEl;
 let criteriaListEl, criteriaDescEl, criteriaAuthorEl;
 let newTaskCriteriaListEl, newTaskCriteriaDescEl;
-let newTaskParentSelectEl, editTaskParentRowEl, editTaskParentLinkEl;
+let newTaskParentRowEl, newTaskParentSelectEl, editTaskParentRowEl, editTaskParentLinkEl;
 let newTaskNodeSelectEl, editTaskNodeSelectEl;
 
 // ============================================================================
@@ -72,11 +72,13 @@ export function initSidebarElements() {
   attachmentCommentIdEl = document.getElementById('attachment-comment-id');
   taskRunsListEl = document.getElementById('task-runs-list');
   taskRunPreviewEl = document.getElementById('task-run-preview');
+  subtaskListEl = document.getElementById('subtask-list');
   criteriaListEl = document.getElementById('task-criteria-list');
   criteriaDescEl = document.getElementById('criteria-desc');
   criteriaAuthorEl = document.getElementById('criteria-author');
   newTaskCriteriaListEl = document.getElementById('new-task-criteria-list');
   newTaskCriteriaDescEl = document.getElementById('new-criteria-desc');
+  newTaskParentRowEl = document.getElementById('new-task-parent-row');
   newTaskParentSelectEl = document.getElementById('new-task-parent-id');
   editTaskParentRowEl = document.getElementById('edit-task-parent-row');
   editTaskParentLinkEl = document.getElementById('edit-task-parent-link');
@@ -149,6 +151,7 @@ export function hideModals() {
   document.getElementById('settings-modal').style.display = 'none';
   setEditingProjectId(null);
   setEditingTaskId(null);
+  setPendingParentTaskId(null);
   resetNewTaskCriteria();
 }
 
@@ -166,7 +169,9 @@ export function showNewTaskModal() {
     newTaskNodeSelectEl.value = getDefaultNodeId();
   }
   populateParentTaskOptions(state.pendingParentTaskId);
-  setPendingParentTaskId(null);
+  if (newTaskParentRowEl) {
+    newTaskParentRowEl.style.display = state.pendingParentTaskId ? 'none' : 'block';
+  }
   resetNewTaskCriteria();
   document.getElementById('new-task-modal').style.display = 'flex';
 }
@@ -505,6 +510,7 @@ export function showEditTaskModal(taskId) {
   }
   document.getElementById('edit-task-modal').style.display = 'flex';
   resetCommentForm();
+  renderSubtasks(taskId);
   loadTaskAcceptanceCriteria(taskId);
   loadTaskComments(taskId);
   loadTaskAttachments(taskId);
@@ -512,6 +518,28 @@ export function showEditTaskModal(taskId) {
   if (taskRunPreviewEl) {
     taskRunPreviewEl.value = '';
   }
+}
+
+export function renderSubtasks(taskId) {
+  if (!subtaskListEl) return;
+  const task = findTaskById(taskId);
+  const children = Array.isArray(task?.children) ? task.children : [];
+  if (!children.length) {
+    subtaskListEl.textContent = 'No subtasks';
+    return;
+  }
+  subtaskListEl.innerHTML = children.map(child => {
+    const title = escapeHtml(child.title || `Task ${child.id}`);
+    const status = escapeHtml(child.status || 'backlog');
+    const nodeLabel = child.node_name ? escapeHtml(child.node_name) : (child.node_id ? `node ${child.node_id}` : '');
+    const meta = [status, nodeLabel].filter(Boolean).join(' · ');
+    return `
+      <div class="subtask-item" onclick="openTaskEditor(${child.id})">
+        <div class="subtask-title">#${child.id} ${title}</div>
+        <div class="subtask-meta">${escapeHtml(meta)}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 export async function createTask() {
@@ -526,8 +554,8 @@ export async function createTask() {
     return;
   }
 
-  let parentId = null;
-  if (parentRaw) {
+  let parentId = state.pendingParentTaskId;
+  if (!parentId && parentRaw) {
     parentId = parseInt(parentRaw, 10);
     if (Number.isNaN(parentId)) parentId = null;
   }
@@ -553,6 +581,7 @@ export async function createTask() {
     document.getElementById('new-task-title').value = '';
     document.getElementById('new-task-desc').value = '';
     if (newTaskParentSelectEl) newTaskParentSelectEl.value = '';
+    setPendingParentTaskId(null);
     resetNewTaskCriteria();
   } catch (err) {
     alert('Failed to create task: ' + err.message);

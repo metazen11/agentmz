@@ -11,7 +11,7 @@ from fastapi.responses import PlainTextResponse
 
 from database import get_db
 from models import Project
-from env_utils import resolve_workspace_path
+from env_utils import resolve_workspace_path, get_workspaces_root
 
 router = APIRouter()
 
@@ -54,7 +54,13 @@ def list_project_files(project_id: int, db: Session = Depends(get_db)):
     # Get workspace path - supports [%root%] variable
     workspace_path = resolve_workspace_path(project.workspace_path)
     # For display purposes, keep the original path notation
-    display_name = project.workspace_path if project.workspace_path.startswith("[%root%]") else workspace_path.name
+    if project.workspace_path.startswith("[%root%]"):
+        display_name = project.workspace_path
+    else:
+        try:
+            display_name = str(workspace_path.relative_to(get_workspaces_root().resolve()))
+        except ValueError:
+            display_name = workspace_path.name
 
     if not workspace_path.exists():
         return {"project_id": project_id, "workspace": display_name, "files": [], "error": "Workspace not found"}
