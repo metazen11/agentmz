@@ -16,8 +16,8 @@ Run with:
     pytest tests/test_workspace_context.py -v -s
 
 Prerequisites:
-    - aider-api running on localhost:8001
-    - Ollama running on localhost:11435
+    - aider-api running on https://wfhub.localhost/aider (http://localhost:8001 works when the proxy is disabled)
+    - Ollama running on https://wfhub.localhost/ollama (http://localhost:11435 is available directly)
 """
 
 import json

@@ -1,12 +1,12 @@
-# Claude Code Directives
+# Gemini Directives
 
-> This file exists for Claude Code auto-discovery. The canonical source of truth is **AGENTS.md**.
+> This file exists for Gemini auto-discovery. The canonical source of truth is **AGENTS.md**.
 
 **Read [AGENTS.md](AGENTS.md) for the complete operational framework.**
 
-## Claude-Specific Notes
+## Gemini-Specific Notes
 
-- Claude Code automatically reads this file on session start
+- Gemini tools may automatically read this file on session start
 - All directives, conventions, and project specs are in AGENTS.md
 - This file kept minimal to avoid duplication (DRY principle)
 

@@ -8,7 +8,7 @@ import json
 import urllib.request
 
 
-APP_URL = os.environ.get("APP_URL", "https://wfhub.localhost")
+APP_URL = os.environ.get("APP_URL", "http://localhost:8002/")
 
 
 def _fetch_json(url, timeout=3):
@@ -88,19 +88,19 @@ def browser_context_args(browser_context_args):
 
 class TestChatUI:
     """Test chat.html functionality."""
-    def test_page_loads(self, page):
+    async def test_page_loads(self, page):
         """Chat page should load without errors."""
-        page.goto(APP_URL)
+        await page.goto(APP_URL)
 
         # Check title
-        expect(page).to_have_title("Agentic v2 - Coding Agent")
+        await expect(page).to_have_title("Agentic v2 - Coding Agent")
 
         # Check main elements exist
-        expect(page.locator("h1")).to_have_text("Agentic v2")
-        expect(page.locator("#project-list")).to_be_visible()
-        expect(page.locator("#task-list")).to_be_visible()
-        expect(page.locator("#messages")).to_be_visible()
-        expect(page.locator("#prompt")).to_be_visible()
+        await expect(page.locator("h1")).to_have_text("Agentic v2")
+        await expect(page.locator("#project-list")).to_be_visible()
+        await expect(page.locator("#task-list")).to_be_visible()
+        await expect(page.locator("#messages")).to_be_visible()
+        await expect(page.locator("#prompt")).to_be_visible()
     def test_projects_load(self, page):
         """Projects should load from API."""
 

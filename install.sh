@@ -196,8 +196,12 @@ POSTGRES_PASSWORD=wfhub
 POSTGRES_DB=agentic
 
 # Ollama LLM
-OLLAMA_URL=http://localhost:11435
-OLLAMA_API_BASE=http://localhost:11435
+OLLAMA_URL=https://wfhub.localhost/ollama
+OLLAMA_API_BASE=https://wfhub.localhost/ollama
+
+# Public domains
+APP_URL=https://wfhub.localhost
+MAIN_API_URL=https://wfhub.localhost
 
 # Vision (image descriptions via Ollama)
 VISION_MODEL=qwen2.5vl:7b
@@ -208,7 +212,7 @@ VISION_IMAGE_MAX_SIZE=640
 
 # Aider Configuration (for code edits)
 AIDER_MODEL=ollama_chat/qwen3:1.7b
-AIDER_API_URL=http://localhost:8001
+AIDER_API_URL=https://wfhub.localhost/aider
 
 # Agent Configuration (for orchestration)
 AGENT_MODEL=qwen3:1.7b

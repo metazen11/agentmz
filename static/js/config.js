@@ -4,7 +4,7 @@
 export const IS_LOCAL_DOMAIN = window.location.hostname.endsWith('.localhost');
 export const MAIN_API = IS_LOCAL_DOMAIN ? window.location.origin : 'http://localhost:8002';
 export const AIDER_API = IS_LOCAL_DOMAIN ? `${window.location.origin}/aider` : 'http://localhost:8001';
-export const HEALTH_CHECK_INTERVAL_MS = 30000;
+export const HEALTH_CHECK_INTERVAL_MS = 120000; // 2 minutes
 
 export function getMainApiBase() {
   return MAIN_API;

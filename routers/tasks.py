@@ -192,8 +192,6 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
 
     context = build_task_context_summary(task, project, db)
 
-    node = context.get("node") or {}
-    node_prompt = node.get("agent_prompt")
     project_info = context.get("project") or {}
     objective = context.get("objective")
     last_comment = context.get("last_comment") or {}
@@ -217,72 +215,86 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
         else:
             image_context = raw_context
 
-    if not discovery.get("endpoints"):
-        discovery = {
-            "instructions": (
-                "Fetch more context only if needed for the objective. "
-                "Use the endpoints below to query additional details."
-            ),
-            "endpoints": {
-                "task": f"/tasks/{task.id}",
-                "comments": f"/tasks/{task.id}/comments",
-                "attachments": f"/tasks/{task.id}/attachments",
-                "acceptance": f"/tasks/{task.id}/acceptance",
-                "runs": f"/tasks/{task.id}/runs",
-                "project_files": f"/projects/{project.id}/files",
-                "git_status": f"/projects/{project.id}/git/status",
-                "help": "/help/agents",
-            },
-        }
+    default_discovery_endpoints = {
+        "task": f"/tasks/{task.id}",
+        "comments": f"/tasks/{task.id}/comments",
+        "attachments": f"/tasks/{task.id}/attachments",
+        "acceptance": f"/tasks/{task.id}/acceptance",
+        "runs": f"/tasks/{task.id}/runs",
+        "project_files": f"/projects/{project.id}/files",
+        "git_status": f"/projects/{project.id}/git/status",
+        "help": "/help/agents",
+    }
 
     endpoint_guidance = {
         "task": {
             "method": "GET",
-            "description": "Fetch the full task record, including title, description, status, and metadata."
+            "description": "Fetch the full task record, including title, description, status, and metadata.",
+            "payload": None,
         },
         "comments": {
             "method": "GET/POST",
-            "description": "GET comments for context and POST `{body, author}` to create a new note."
+            "description": "GET comments for context and POST `{body, author}` to create a new note.",
+            "payload": {"body": "text", "author": "agent.<node>"},
         },
         "attachments": {
             "method": "GET/POST",
-            "description": "GET attachment list or POST multipart/form-data with a file field to upload proof."
+            "description": "GET attachment list or POST multipart/form-data with a file field to upload proof.",
+            "payload": "multipart/form-data with field `file` plus optional metadata",
         },
         "acceptance": {
-            "method": "GET",
-            "description": "Read acceptance criteria; mark items as passed via PATCH if available."
+            "method": "GET/PATCH",
+            "description": "GET acceptance criteria; PATCH `{id, passed}` if you mark items as done.",
+            "payload": {"id": "number", "passed": "true|false"},
         },
         "runs": {
             "method": "GET/POST",
-            "description": "GET run history or POST `{node_id, status, summary}` to record a new run."
+            "description": "GET run history or POST `{node_id, status, summary}` to record a new run.",
+            "payload": {"node_id": task.node_id, "status": "pass|fail", "summary": "text"},
         },
         "project_files": {
             "method": "GET",
-            "description": "List workspace files to locate code referenced by the task."
+            "description": "List workspace files to locate code referenced by the task.",
+            "payload": None,
         },
         "git_status": {
             "method": "GET",
-            "description": "Inspect git status to know what is staged, modified, or untracked."
+            "description": "Inspect git status to know what is staged, modified, or untracked.",
+            "payload": None,
         },
         "help": {
             "method": "GET",
-            "description": "Call `/help/agents` for expert guidance on using the API."
+            "description": "Call `/help/agents` for expert guidance on using the API.",
+            "payload": None,
         },
     }
+
+    discovery_endpoints = discovery.get("endpoints") or {}
+    merged_endpoints = {**default_discovery_endpoints, **discovery_endpoints}
     described_endpoints = []
-    raw_endpoints = mcp_info.get("endpoints") or {}
-    for name, path in raw_endpoints.items():
+    for name, path in merged_endpoints.items():
         guidance = endpoint_guidance.get(name, {})
         produced_path = path
         if not produced_path.startswith("http"):
-        produced_path = main_api.rstrip("/") + ("" if path.startswith("/") else "/") + path
+            path_prefix = "" if path.startswith("/") else "/"
+            produced_path = main_api.rstrip("/") + path_prefix + path
         described_endpoints.append({
             "name": name,
-            "path": produced_path,
+            "url": produced_path,
             "method": guidance.get("method", "GET"),
             "description": guidance.get("description", "Call this endpoint for more context."),
+            "payload": guidance.get("payload"),
         })
     help_url = main_api.rstrip("/") + "/help/agents"
+
+    recent_files_payload = {
+        "last_commit_summary": recent_files.get("last_commit_summary")
+    }
+    if not payload.concise:
+        recent_files_payload.update({
+            "last_commit_files": recent_files.get("last_commit_files"),
+            "working_changes": recent_files.get("working_changes"),
+        })
 
     prompt_payload = {
         "project": {
@@ -296,18 +308,22 @@ def build_task_prompt(task_id: int, payload: TaskPromptRequest, db: Session = De
             "author": last_comment.get("author"),
             "body": last_comment.get("body"),
         } if last_comment.get("body") else None,
-        "recent_files": {
-            "last_commit_summary": recent_files.get("last_commit_summary"),
-            "last_commit_files": recent_files.get("last_commit_files"),
-            "working_changes": recent_files.get("working_changes"),
-        },
+        "recent_files": recent_files_payload,
         "mcp": {
             "notes": mcp_info.get("notes"),
+            "main_api": main_api,
+            "system_domain": system_info,
             "endpoints": described_endpoints,
             "reporting": mcp_info.get("reporting"),
             "help": help_url,
-        } if mcp_info else None,
-        "discovery": discovery,
+        },
+        "discovery": {
+            "instructions": discovery.get("instructions") or (
+                "Fetch more context only if needed for the objective. "
+                "Use the endpoints below to query additional details."
+            ),
+            "endpoints": described_endpoints,
+        },
         "acceptance_criteria": [
             item.get("description")
             for item in (context.get("acceptance_criteria") or [])
@@ -356,12 +372,14 @@ def get_task_context(task_id: int, db: Session = Depends(get_db)):
     return build_task_context_payload(task, project, db)
 
 @router.post("/tasks/{task_id}/trigger")
-def trigger_task(task_id: int, db: Session = Depends(get_db)):
-    """Manually trigger the Aider agent for a task."""
+async def trigger_task(task_id: int, db: Session = Depends(get_db)):
+    """Manually trigger the agent for a task using the agent loop."""
+    import httpx
     from pathlib import Path
-    from agent.aider_runner import run_agent
-    from models import TaskRun
+    from models import TaskRun, TaskNode
     from datetime import datetime
+
+    AIDER_API_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-aider-api:8001")
 
     task = get_task_or_404(task_id, db)
 
@@ -370,54 +388,87 @@ def trigger_task(task_id: int, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Extract workspace name from path
-    workspace_name = Path(project.workspace_path).name
+    # Handle [%root%] variable - pass through directly
+    workspace_path = project.workspace_path
+    if workspace_path.startswith("[%root%]"):
+        workspace_name = workspace_path
+    else:
+        workspace_name = Path(workspace_path).name
+
+    # Get node for context
+    node = db.query(TaskNode).filter(TaskNode.id == task.node_id).first()
+    node_name = node.name if node else "dev"
+    node_prompt = node.agent_prompt if node else None
+
+    # Build task prompt
+    prompt_parts = []
+    if node_prompt:
+        prompt_parts.append(f"ROLE: {node_prompt}")
+    prompt_parts.append(f"TASK: {task.title}")
+    if task.description:
+        prompt_parts.append(f"\nDESCRIPTION:\n{task.description}")
+    prompt_parts.append("\n\nComplete this task. Use the available tools (grep, glob, read, write, edit, bash) as needed.")
+
+    full_prompt = "\n".join(prompt_parts)
 
     # Update status to in_progress
     task.status = "in_progress"
     db.commit()
 
-    # Run Aider agent
-    run = None
+    # Create task run record
+    run = TaskRun(task_id=task.id, node_id=task.node_id, status="started")
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
     try:
-        run = TaskRun(task_id=task.id, node_id=task.node_id, status="started")
-        db.add(run)
-        db.commit()
-        db.refresh(run)
+        # Call the agent loop endpoint (not aider CLI)
+        async with httpx.AsyncClient(timeout=300) as client:
+            response = await client.post(
+                f"{AIDER_API_URL}/api/agent/run",
+                json={
+                    "task": full_prompt,
+                    "workspace": workspace_name,
+                    "project_id": project.id,
+                    "task_id": task.id,
+                    "max_iterations": 20,
+                }
+            )
+            result = response.json()
 
-        result = run_agent(
-            workspace_name=workspace_name,
-            task_title=task.title,
-            task_description=task.description or "",
-            task_id=task.id,
-            node_name=task.node_name or "dev",
-        )
+        # Determine success
+        success = result.get("success") or result.get("status") == "PASS"
 
-        # Update task status based on result
-        if result.get("status") == "PASS":
+        # Update task and run status
+        if success:
             task.status = "done"
             run.status = "completed"
         else:
             task.status = "failed"
             run.status = "failed"
-            run.error = result.get("summary")
+            run.error = result.get("error") or result.get("summary")
+
         run.summary = result.get("summary")
+        run.tool_calls = result.get("tool_calls")
         run.finished_at = datetime.utcnow()
         db.commit()
 
         return {"triggered": True, "task_id": task_id, "run_id": run.id, "result": result}
 
+    except httpx.TimeoutException:
+        task.status = "failed"
+        run.status = "failed"
+        run.error = "Agent timeout (>5 minutes)"
+        run.finished_at = datetime.utcnow()
+        db.commit()
+        return {"triggered": False, "task_id": task_id, "error": "Agent timeout"}
+
     except Exception as e:
         task.status = "failed"
+        run.status = "failed"
+        run.error = str(e)
+        run.finished_at = datetime.utcnow()
         db.commit()
-        if run is not None:
-            try:
-                run.status = "failed"
-                run.error = str(e)
-                run.finished_at = datetime.utcnow()
-                db.commit()
-            except Exception:
-                db.rollback()
         return {"triggered": False, "task_id": task_id, "error": str(e)}
 
 

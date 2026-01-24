@@ -12,7 +12,7 @@ from typing import Optional
 import httpx
 
 # Configuration
-AIDER_API_URL = os.getenv("AIDER_API_URL", "http://localhost:8001")
+AIDER_API_URL = os.getenv("AIDER_API_URL", "https://wfhub.localhost/aider")
 WORKSPACES_DIR = Path(__file__).parent.parent / "workspaces"
 
 
@@ -94,13 +94,19 @@ def call_aider(workspace: str, prompt: str, files: list) -> dict:
 
     When running in Docker (root compose), v2 workspaces are at /workspaces/v2/.
     When running locally (v2 scripts/aider_api.py), workspaces are directly accessible.
+
+    Special case: [%root%] means the v2 project root itself.
     """
     try:
-        # Check if we're calling Docker-mounted Aider or local Aider
-        # Local v2 aider_api.py serves workspaces directly (no v2/ prefix needed)
-        # Root Docker aider-api mounts v2/workspaces at /workspaces/v2/
-        in_docker = os.path.isdir("/workspaces")
-        container_workspace = f"v2/{workspace}" if in_docker else workspace
+        # Handle [%root%] - pass through directly, aider_api.py resolves it
+        if workspace.startswith("[%root%]"):
+            container_workspace = workspace
+        else:
+            # Check if we're calling Docker-mounted Aider or local Aider
+            # Local v2 aider_api.py serves workspaces directly (no v2/ prefix needed)
+            # Root Docker aider-api mounts v2/workspaces at /workspaces/v2/
+            in_docker = os.path.isdir("/workspaces")
+            container_workspace = f"v2/{workspace}" if in_docker else workspace
 
         response = httpx.post(
             f"{AIDER_API_URL}/api/aider/execute",

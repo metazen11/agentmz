@@ -25,7 +25,7 @@ Examples:
   ./run_aider_local.sh
   ./run_aider_local.sh --execute -m "Create a note" notes.txt
   ./run_aider_local.sh --set-model ollama_chat/qwen2.5-coder:3b --execute -m "..." file.txt
-  ./run_aider_local.sh --set-ollama-base http://localhost:11435 --execute -m "..." file.txt
+  ./run_aider_local.sh --set-ollama-base https://wfhub.localhost/ollama --execute -m "..." file.txt
 EOF
   exit 0
 fi
@@ -36,6 +36,11 @@ if [ -f ".env" ]; then
   set -a
   . ".env"
   set +a
+  # For local development, use the local Ollama URL (exposed port)
+  if [ -n "${OLLAMA_API_BASE_LOCAL:-}" ]; then
+    export OLLAMA_API_BASE="$OLLAMA_API_BASE_LOCAL"
+    export OLLAMA_URL="$OLLAMA_API_BASE_LOCAL"
+  fi
 fi
 
 has_model=false

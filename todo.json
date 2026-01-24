@@ -1,6 +1,13 @@
 {
-  "updated": "2026-01-19",
+  "updated": "2026-01-23",
   "items": [
+    {
+      "id": "refactor-01",
+      "title": "Refactor chat.html into smaller modules",
+      "status": "todo",
+      "priority": "high",
+      "notes": "chat.html is >37000 tokens - too large to read in one context window. Split into: static/js/chat-core.js (message handling), static/js/chat-sidebar.js (project/task management), static/js/chat-agent.js (agent interaction), static/js/chat-git.js (git operations). Keep chat.html as thin HTML + imports."
+    },
     {
       "id": "integration-01",
       "title": "External Task Integration: Database Schema",

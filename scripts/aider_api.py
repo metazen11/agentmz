@@ -37,6 +37,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+import ssl
+import time
 
 
 def load_env_file(env_path: str = None):
@@ -191,6 +193,13 @@ class Config:
 
 # Global config instance
 config = Config()
+
+
+def _ollama_ssl_context():
+    verify_ssl = os.environ.get("OLLAMA_VERIFY", "0").lower() in {"1", "true", "yes", "y"}
+    if config.ollama_api_base.startswith("https") and not verify_ssl:
+        return ssl._create_unverified_context()
+    return None
 
 # Tool definitions for LLM
 TOOL_DEFINITIONS = [
@@ -511,7 +520,8 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         url = f"{config.ollama_api_base}/api/tags"
         try:
             req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=5) as response:
+            context = _ollama_ssl_context()
+            with urllib.request.urlopen(req, timeout=5, context=context) as response:
                 payload = json.loads(response.read().decode("utf-8"))
             models = [
                 m.get("name") for m in payload.get("models", [])
@@ -621,7 +631,8 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
+            context = _ollama_ssl_context()
+            with urllib.request.urlopen(req, timeout=timeout_seconds, context=context) as response:
                 result = json.loads(response.read().decode("utf-8"))
             if result.get("message"):
                 # Verify model is actually loaded via /api/ps
@@ -642,7 +653,8 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
 
         try:
             req = urllib.request.Request(f"{config.ollama_api_base}/api/ps")
-            with urllib.request.urlopen(req, timeout=5) as response:
+            context = _ollama_ssl_context()
+            with urllib.request.urlopen(req, timeout=5, context=context) as response:
                 result = json.loads(response.read().decode("utf-8"))
             models = result.get("models", [])
             if models:
@@ -1112,6 +1124,19 @@ Paths:
 For simple tasks (create a file, write content), just do it directly.
 For complex tasks (modify existing code, find bugs), explore first to understand the codebase."""
 
+    def _minimal_chat_system_prompt(self) -> str:
+        """A simple system prompt for direct chat interactions."""
+        return """You are a helpful coding assistant. Respond to user questions or commands directly.
+Do not output tool calls unless specifically instructed to perform an action (e.g., "grep for X", "read Y").
+If you need to perform actions, use the available tools:
+- grep: Search for patterns in files
+- glob: Find files by pattern
+- read: Read file contents
+- bash: Run a shell command
+- edit: Modify existing code files
+- write: Create new files
+"""
+
     def _get_workspace_files(self, workspace_path: str, key_files: list | None = None) -> str:
         """Return a compact workspace overview for agent context."""
         lines = ["## Workspace Overview"]
@@ -1201,6 +1226,8 @@ For complex tasks (modify existing code, find bugs), explore first to understand
         max_iter = min(data.get("max_iterations", config.max_iterations), 50)
         project_id = data.get("project_id")
         task_id = data.get("task_id")
+        chat_mode = data.get("chat_mode", False)
+        system_prompt_override = data.get("system_prompt_override") # NEW: Get system prompt override
 
         if not task:
             return {"success": False, "error": "task required"}
@@ -1209,16 +1236,27 @@ For complex tasks (modify existing code, find bugs), explore first to understand
         if not os.path.isdir(workspace_path):
             return {"success": False, "error": f"Workspace not found: {workspace}"}
 
-        # Build system prompt with full project context (DB + files + discovery)
-        system_prompt = self._build_system_prompt(
-            workspace=workspace,
-            workspace_path=workspace_path,
-            project_id=project_id,
-            task_id=task_id
-        )
+        system_prompt = ""
+        user_message_content = task
 
-        # Build initial message
-        user_message = f"""Task: {task}
+        if system_prompt_override: # NEW: If override is provided, use it
+            system_prompt = system_prompt_override
+            user_message = user_message_content # Raw user input
+            print(f"[AGENT] Using system_prompt_override.")
+        elif chat_mode and not task_id: # If in chat_mode and no specific task is active
+            # Use minimal system prompt for chat
+            system_prompt = self._minimal_chat_system_prompt()
+            user_message = user_message_content # Raw user input for chat mode
+            print(f"[AGENT] Chat Mode: Using minimal system prompt and raw user message.")
+        else:
+            # Existing logic for full task runs
+            system_prompt = self._build_system_prompt(
+                workspace=workspace,
+                workspace_path=workspace_path,
+                project_id=project_id,
+                task_id=task_id
+            )
+            user_message = f"""Task: {user_message_content}
 
 Workspace: {workspace}"""
 
@@ -1231,6 +1269,14 @@ Workspace: {workspace}"""
         iteration = 0
         all_tool_calls = []
         result = {"success": False, "status": "INCOMPLETE", "summary": "Agent did not complete", "iterations": 0}
+        start_time = time.time()
+
+        def finalize_run(res: dict) -> dict:
+            res.setdefault("iterations", iteration)
+            res["tool_calls"] = res.get("tool_calls") or all_tool_calls
+            res["duration_seconds"] = round(time.time() - start_time, 2)
+            print(f"[AGENT] Run completed in {res['duration_seconds']}s with status {res.get('status')}")
+            return res
 
         while iteration < max_iter:
             iteration += 1
@@ -1295,26 +1341,27 @@ Workspace: {workspace}"""
 
                 # Check for done signal
                 if tool_name == "done":
-                    status = tool_args.get("status", "PASS")
-                    summary = tool_args.get("summary", "Task completed")
-                    # Clean up summary for successful completions
-                    if status == "PASS":
-                        summary = self._clean_summary(summary)
+                    done_status = tool_args.get("status", "PASS") # Use different variable names
+                    done_summary = tool_args.get("summary", "Task completed")
+                    if done_status == "PASS":
+                        done_summary = self._clean_summary(done_summary)
+                    
                     result = {
-                        "success": status == "PASS",
-                        "status": status,
-                        "summary": summary,
+                        "success": done_status == "PASS",
+                        "status": done_status,
+                        "summary": done_summary,
                         "iterations": iteration,
                         "tool_calls": all_tool_calls,
                     }
-                    return result
+                    return finalize_run(result) # Exit the whole agent loop if done is called
 
+                # Append tool result for message history
                 tool_results.append({
                     "role": "tool",
                     "content": json.dumps(tool_output) if isinstance(tool_output, dict) else str(tool_output),
                 })
-
-            # Add to message history
+            
+            # Add to message history after all tool calls in this iteration are processed
             messages.append({
                 "role": "assistant",
                 "content": content,
@@ -1329,7 +1376,7 @@ Workspace: {workspace}"""
         if iteration >= max_iter:
             result["error"] = f"Max iterations ({max_iter}) reached"
 
-        return result
+        return finalize_run(result)
 
     def _call_ollama(self, messages: list) -> dict:
         """Call Ollama API with messages and tools."""
@@ -1352,7 +1399,8 @@ Workspace: {workspace}"""
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=120) as response:
+            context = _ollama_ssl_context()
+            with urllib.request.urlopen(req, timeout=120, context=context) as response:
                 result = json.loads(response.read().decode("utf-8"))
                 # Log which model actually responded
                 if result.get("model"):
@@ -1513,6 +1561,9 @@ Workspace: {workspace}"""
             return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
     def log_message(self, format, *args):
+        # Skip logging health checks to reduce noise
+        if args and "/health" in str(args[0]):
+            return
         print(f"[AIDER-API] {args[0]}")
 
 

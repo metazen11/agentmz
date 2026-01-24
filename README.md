@@ -153,12 +153,12 @@ curl -X POST http://localhost:8002/tasks \
   -d '{"project_id": 1, "title": "Add login page"}'
 
 # Run agent
-curl -X POST http://localhost:8001/api/agent/run \
+curl -X POST https://wfhub.localhost/aider/api/agent/run \
   -H "Content-Type: application/json" \
   -d '{"task": "Create index.html with hello world", "workspace": "poc"}'
 
 # Switch model
-curl -X POST http://localhost:8001/api/model/switch \
+curl -X POST https://wfhub.localhost/aider/api/model/switch \
   -H "Content-Type: application/json" \
   -d '{"model": "qwen3:1.7b"}'
 ```
@@ -193,6 +193,8 @@ curl -X POST http://localhost:8001/api/model/switch \
 
 ### Agent (Aider API)
 
+Accessible through the HTTPS proxy at `https://wfhub.localhost/aider` when the stack is running with Caddy.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/health` | Health check |
@@ -226,8 +228,13 @@ POSTGRES_PASSWORD=wfhub
 POSTGRES_DB=agentic
 
 # Ollama LLM
-OLLAMA_URL=http://localhost:11435
-OLLAMA_API_BASE=http://localhost:11435
+OLLAMA_URL=https://wfhub.localhost/ollama
+OLLAMA_API_BASE=https://wfhub.localhost/ollama
+
+# Public URLs
+APP_URL=https://wfhub.localhost
+MAIN_API_URL=https://wfhub.localhost
+AIDER_API_URL=https://wfhub.localhost/aider
 
 # Models
 AIDER_MODEL=ollama_chat/qwen3:1.7b
@@ -315,7 +322,7 @@ docker logs -f wfhub-v2-main-api
 curl http://localhost:8002/health/full | python3 -m json.tool
 
 # Check Ollama models
-curl http://localhost:11435/api/tags
+curl https://wfhub.localhost/ollama/api/tags
 
 # Pull missing model
 docker exec wfhub-v2-ollama ollama pull qwen3:1.7b
@@ -338,6 +345,12 @@ alembic upgrade head
 6. → Returns result (PASS/FAIL with summary)
 7. → UI displays response with tool call details
 ```
+
+## Assistant Interaction Expectations
+
+This project expects the helper agent to act like an automated assistant: when you are asked to “confirm,” “verify,” or “check,” run the relevant commands or API calls yourself, capture their outputs, and report the results along with the commands that were executed. Be transparent about what you did, keep interactions efficient, and avoid manual handoffs unless explicitly requested.
+
+Keeping the stack running via `./start.sh` (or `docker compose --env-file .env -f docker/docker-compose.yml up -d`) ensures the assistant has access to the required services, which is important for immediate verification. If extra automation is needed, add helper scripts (e.g., `scripts/auto-verify.sh`) that bundle the standard checks for the assistant’s use.
 
 ## Workspaces
 

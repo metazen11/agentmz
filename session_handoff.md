@@ -514,7 +514,7 @@ python -m http.server 8080
 - [x] Aider workspace git init now uses env-provided name/email
 
 ### Notes
-- Ollama container `wfhub-v2-ollama` is healthy on `http://localhost:11435`
+- Ollama container `wfhub-v2-ollama` is healthy on `https://wfhub.localhost/ollama`
 
 ---
 
@@ -654,7 +654,7 @@ EOF
 ollama create qwen-coder-optimized -f /tmp/Modelfile'
 
 # Benchmark
-time curl -s http://localhost:11435/api/generate -d '{"model":"qwen-coder-optimized","prompt":"Write hello world in Python","stream":false}'
+time curl -s https://wfhub.localhost/ollama/api/generate -d '{"model":"qwen-coder-optimized","prompt":"Write hello world in Python","stream":false}'
 ```
 
 ---

@@ -7,6 +7,17 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1217 | 10:36 PM | 🔄 | Refactored FastAPI router to use clean path patterns with prefixes | ~366 |
-| #1194 | 10:26 PM | 🔴 | Fixed Duplicate Path Prefix in Nodes Router | ~498 |
+| #1188 | 10:13 PM | 🟣 | Implemented Node Update with Workflow Field Support | ~389 |
+| #1187 | 10:12 PM | 🟣 | Implemented Node Creation with Workflow Validation | ~366 |
+| #1186 | " | ✅ | Updated Get Node Endpoint to Use to_dict Method | ~232 |
+| #1185 | " | ✅ | Updated List Nodes Endpoint to Use to_dict Method | ~262 |
+| #1184 | " | 🟣 | Extended Node API Schemas with Workflow Fields | ~348 |
+| #1172 | 9:15 PM | 🔵 | Node Router API Current State | ~270 |
+| #1170 | 8:33 PM | ⚖️ | Node Editor Tab Implementation Plan Created | ~653 |
+| #1169 | 8:32 PM | ⚖️ | Node Editor Implementation Plan for Settings Modal | ~1272 |
+| #1164 | 8:28 PM | 🔵 | Task Node Agent Prompt Integration and Workflow Architecture | ~1093 |
+| #1163 | 8:27 PM | 🔵 | Task Run CRUD API Router Implementation | ~792 |
+| #1160 | 8:26 PM | 🔵 | Complete Task Router Architecture with Prompt Building and Context Assembly | ~860 |
+| #1158 | 8:25 PM | 🔵 | Task Prompt Building System with Context Assembly | ~700 |
+| #1154 | 8:24 PM | 🔵 | Task Node CRUD API Router Implementation | ~642 |
 </claude-mem-context>

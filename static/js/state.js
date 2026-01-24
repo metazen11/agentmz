@@ -11,15 +11,27 @@ export const state = {
   selectedTask: null,
   editingTaskId: null,
 
+  // Task details (comments, attachments, runs, criteria)
+  taskComments: [],
+  taskAttachments: [],
+  taskRuns: [],
+  taskCriteria: [],
+  newTaskCriteria: [],
+  editingCommentId: null,
+  pendingParentTaskId: null,
+
   // Models
   availableModels: [],
   isModelSwitching: false,
   visionModel: '',
+  visionImageMaxSize: 640,
+  visionModelRegex: null,
 
   // Files
   fileTree: [],
   referencedFiles: [],
   currentWorkspacePath: '',
+  isSyncingReferencedFiles: false,
 
   // Images
   attachedImages: [],
@@ -31,6 +43,7 @@ export const state = {
   // Nodes
   nodes: [],
   selectedNodeId: null,
+  availableNodes: [],
 
   // Logs
   currentLogTab: 'ollama_http',
@@ -137,4 +150,52 @@ export function setNodes(value) {
 export function setSelectedNodeId(value) {
   state.selectedNodeId = value;
   selectedNodeId = value;
+}
+
+export function setAvailableNodes(value) {
+  state.availableNodes = value;
+}
+
+export function setTaskComments(value) {
+  state.taskComments = value;
+}
+
+export function setTaskAttachments(value) {
+  state.taskAttachments = value;
+}
+
+export function setTaskRuns(value) {
+  state.taskRuns = value;
+}
+
+export function setTaskCriteria(value) {
+  state.taskCriteria = value;
+}
+
+export function setNewTaskCriteria(value) {
+  state.newTaskCriteria = value;
+}
+
+export function setEditingCommentId(value) {
+  state.editingCommentId = value;
+}
+
+export function setPendingParentTaskId(value) {
+  state.pendingParentTaskId = value;
+}
+
+export function setVisionImageMaxSize(value) {
+  state.visionImageMaxSize = value;
+}
+
+export function setVisionModelRegex(value) {
+  state.visionModelRegex = value;
+}
+
+export function setIsSyncingReferencedFiles(value) {
+  state.isSyncingReferencedFiles = value;
+}
+
+export function setLogsCollapsed(value) {
+  state.logsCollapsed = value;
 }

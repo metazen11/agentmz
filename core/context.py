@@ -175,11 +175,6 @@ def build_task_context_summary(task: Task, project: Project, db: Session) -> dic
             "environment": project.environment,
         },
         "objective": objective,
-        "node": {
-            "id": node_info.get("id"),
-            "name": node_info.get("name"),
-            "agent_prompt": node_info.get("agent_prompt"),
-        } if node_info else None,
         "acceptance_criteria": [
             {
                 "id": item.get("id"),
@@ -215,5 +210,6 @@ def build_task_context_summary(task: Task, project: Project, db: Session) -> dic
             "body": last_comment_entry.get("body") if last_comment_entry else None,
             "created_at": last_comment_entry.get("created_at") if last_comment_entry else None,
         } if last_comment_entry else None,
+        "mcp": context.get("mcp"),
     }
     return summary
