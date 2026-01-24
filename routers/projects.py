@@ -1,6 +1,8 @@
 """Routers for Project CRUD operations."""
 import os
+import shutil
 import subprocess
+from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -57,6 +59,14 @@ def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     workspace_path = resolve_workspace_path(db_project.workspace_path)
     try:
         workspace_path.mkdir(parents=True, exist_ok=True)
+
+        # Copy .aiderignore to new workspace if it exists in project root
+        project_root = Path(os.getenv("PROJECT_ROOT", Path(__file__).parent.parent))
+        aiderignore_src = project_root / ".aiderignore"
+        aiderignore_dst = workspace_path / ".aiderignore"
+        if aiderignore_src.exists() and not aiderignore_dst.exists():
+            shutil.copy2(aiderignore_src, aiderignore_dst)
+
         if not (workspace_path / ".git").exists():
             subprocess.run(["git", "-C", str(workspace_path), "init"], check=True, capture_output=True)
             git_name = os.getenv("GIT_USER_NAME", "Aider Agent")

@@ -1,0 +1,64 @@
+# .aiderignore - Exclude from Aider repo-map
+# Reduces token usage for large repos
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Node
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Git
+.git/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+.DS_Store
+
+# Test artifacts
+tests/screenshots/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+#workspaces
+workspaces/
+
+# Database files
+*.db
+*.sqlite
+
+# Large binary files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.pdf
+*.zip
+*.tar.gz
+
+# Aider own files
+.aider*

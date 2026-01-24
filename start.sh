@@ -292,4 +292,14 @@ if [ "$NO_BROWSER" = false ]; then
     open_browser "https://wfhub.localhost" || open_browser "http://localhost:8002"
 fi
 
+# === Install Agent Alias (non-blocking, skip if already installed) ===
+echo ""
+echo "--- Agent Setup ---"
+if [ -n "${AGENTMZ_DIR:-}" ] && command -v aider &> /dev/null; then
+    echo "agent: already configured (AGENTMZ_DIR=$AGENTMZ_DIR)"
+elif [ -f "$SCRIPT_DIR/agent_alias_install.sh" ]; then
+    ("$SCRIPT_DIR/agent_alias_install.sh") || echo "  (agent setup skipped - run ./agent_alias_install.sh manually)"
+fi
+
+echo ""
 echo "Ready!"
