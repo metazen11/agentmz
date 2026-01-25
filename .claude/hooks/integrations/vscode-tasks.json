@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Code Review: Current File",
+      "type": "shell",
+      "command": "code-review",
+      "args": ["${file}"],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": "test"
+    },
+    {
+      "label": "Code Review: Watch Mode",
+      "type": "shell",
+      "command": "code-review",
+      "args": ["--watch", "${workspaceFolder}"],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "Code Review: JSON Output",
+      "type": "shell",
+      "command": "code-review",
+      "args": ["--json", "${file}"],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}

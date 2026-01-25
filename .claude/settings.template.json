@@ -12,7 +12,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 $CLAUDE_PROJECT_DIR/.claude/hooks/code-review.py",
+            "command": "python3 $CLAUDE_PROJECT_DIR/scripts/code-review --stdin",
             "timeout": 30
           }
         ]

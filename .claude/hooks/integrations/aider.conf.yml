@@ -1,0 +1,8 @@
+# Aider configuration with code review integration
+# Copy to ~/.aider.conf.yml or project root
+
+# Run code review after each edit
+lint-cmd: code-review
+
+# Optional: auto-lint on every change
+# auto-lint: true

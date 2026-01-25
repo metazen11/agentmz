@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""
+Universal Code Review Tool
+
+Agent-agnostic code quality reviewer that can be called from any AI coding assistant,
+editor, or command line.
+
+Usage:
+    code-review <file>              # Review a single file
+    code-review <file1> <file2>     # Review multiple files
+    code-review --watch <dir>       # Watch directory for changes
+    code-review --stdin             # Read file path from stdin (for pipes)
+    code-review --json              # Output as JSON (for editor integration)
+
+Exit codes:
+    0 - All checks passed
+    1 - Warnings only (non-blocking)
+    2 - Errors found (blocking)
+
+Integration examples:
+    # Aider post-commit hook
+    aider --lint-cmd "code-review {file}"
+
+    # VS Code task
+    "command": "code-review ${file}"
+
+    # Vim autocommand
+    autocmd BufWritePost *.py !code-review %
+
+    # Generic file watcher
+    code-review --watch ./src
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+class CodeReviewer:
+    """Universal code quality reviewer."""
+
+    def __init__(self, file_path, output_json=False):
+        self.file_path = Path(file_path)
+        self.output_json = output_json
+        self.ext = self.file_path.suffix.lstrip(".")
+        self.errors = []
+        self.warnings = []
+        self.content = ""
+
+        if self.file_path.exists():
+            try:
+                self.content = self.file_path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                pass
+
+    def add_error(self, line, msg):
+        self.errors.append({"line": line, "message": msg, "severity": "error"})
+
+    def add_warning(self, line, msg):
+        self.warnings.append({"line": line, "message": msg, "severity": "warning"})
+
+    def check_simplicity(self):
+        """Check for over-engineering patterns."""
+        if self.ext == "py":
+            if re.search(r"class.*\(.*\(.*\(", self.content):
+                self.add_warning(0, "Deep class inheritance - consider composition")
+
+            for i, line in enumerate(self.content.split("\n"), 1):
+                if len(line) > 100 and re.search(r"(for|if|else|and|or).*:", line):
+                    self.add_warning(i, "Complex one-liner - consider breaking up")
+                    break
+
+        elif self.ext in ("js", "ts"):
+            if re.search(r"\)\s*=>\s*\{.*\)\s*=>\s*\{.*\)\s*=>\s*\{", self.content):
+                self.add_warning(0, "Nested callbacks - consider async/await")
+
+    def check_security(self):
+        """Check for security vulnerabilities."""
+        lines = self.content.split("\n")
+
+        if self.ext == "py":
+            for i, line in enumerate(lines, 1):
+                if "# nosec" in line:
+                    continue
+
+                # SQL injection
+                if re.search(r"(execute|raw)\s*\(.*(%s|%d|\.format|\+)", line):
+                    self.add_error(i, "Potential SQL injection - use parameterized queries")
+
+                # Command injection
+                if re.search(r"(os\.system|subprocess\.(call|run|Popen))\s*\([^)]*\+", line):
+                    self.add_error(i, "Potential command injection - avoid string concatenation")
+
+                # Hardcoded secrets
+                if re.search(r"(password|secret|api_key|token)\s*=\s*['\"][^'\"]{8,}['\"]", line, re.I):
+                    if not any(x in line.lower() for x in ["example", "placeholder", "test", "env"]):
+                        self.add_error(i, "Hardcoded secret - use environment variables")
+
+                # Pickle
+                if "pickle.load" in line:
+                    self.add_warning(i, "Pickle usage - ensure trusted data source")
+
+        elif self.ext in ("js", "ts"):
+            for i, line in enumerate(lines, 1):
+                if "innerHTML" in line and "=" in line:
+                    self.add_warning(i, "innerHTML - ensure content is sanitized")
+
+                if re.search(r"\beval\s*\(", line):
+                    self.add_error(i, "eval() is a security risk")
+
+                if re.search(r"(password|secret|api_key|token)\s*[:=]\s*['\"][^'\"]{8,}['\"]", line, re.I):
+                    if not any(x in line.lower() for x in ["example", "placeholder", "test"]):
+                        self.add_error(i, "Hardcoded secret - use environment variables")
+
+        elif self.ext in ("sh", "bash"):
+            for i, line in enumerate(lines, 1):
+                if "# nosec" in line:
+                    continue
+                if re.search(r'\$[a-zA-Z_][a-zA-Z0-9_]*[^"\'\a-zA-Z0-9_}]', line):
+                    self.add_warning(i, "Unquoted variable - use \"$VAR\"")
+
+    def check_naming(self):
+        """Check naming conventions."""
+        lines = self.content.split("\n")
+
+        if self.ext == "py":
+            for i, line in enumerate(lines, 1):
+                if re.match(r"^\s*def [a-z]+[A-Z]", line):
+                    self.add_warning(i, "Function should be snake_case")
+                if re.match(r"^\s*class [a-z]", line):
+                    self.add_warning(i, "Class should be PascalCase")
+
+        elif self.ext in ("js", "ts"):
+            for i, line in enumerate(lines, 1):
+                if re.search(r"function\s+[a-z]+_[a-z]+", line):
+                    self.add_warning(i, "Function should be camelCase")
+
+    def check_syntax(self):
+        """Validate syntax."""
+        if not self.file_path.exists():
+            return
+
+        try:
+            if self.ext == "py":
+                result = subprocess.run(
+                    [sys.executable, "-m", "py_compile", str(self.file_path)],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode != 0:
+                    self.add_error(0, f"Python syntax error: {result.stderr.strip()}")
+
+            elif self.ext == "js":
+                result = subprocess.run(
+                    ["node", "--check", str(self.file_path)],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode != 0:
+                    self.add_error(0, f"JavaScript syntax error: {result.stderr.strip()}")
+
+            elif self.ext == "json":
+                json.loads(self.content)
+
+        except subprocess.TimeoutExpired:
+            pass
+        except FileNotFoundError:
+            pass
+        except json.JSONDecodeError as e:
+            self.add_error(e.lineno or 0, f"Invalid JSON: {e}")
+
+    def check_documentation(self):
+        """Check for documentation."""
+        if self.ext == "py":
+            func_count = len(re.findall(r"^\s*def ", self.content, re.M))
+            doc_count = self.content.count('"""')
+
+            if func_count > 2 and doc_count < 1:
+                self.add_warning(0, "No docstrings - add documentation for functions")
+
+        elif self.ext in ("js", "ts"):
+            func_count = len(re.findall(r"(function|=>)", self.content))
+            jsdoc_count = self.content.count("/**")
+
+            if func_count > 3 and jsdoc_count < 1:
+                self.add_warning(0, "Consider adding JSDoc comments")
+
+        # Line length
+        lines = self.content.split("\n")
+        long_lines = sum(1 for line in lines if len(line) > 120)
+        if long_lines > 5:
+            self.add_warning(0, f"{long_lines} lines exceed 120 characters")
+
+    def run_all_checks(self):
+        """Run all code review checks."""
+        self.check_simplicity()
+        self.check_security()
+        self.check_naming()
+        self.check_syntax()
+        self.check_documentation()
+
+    def get_results(self):
+        """Get results as a dictionary."""
+        return {
+            "file": str(self.file_path),
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "passed": len(self.errors) == 0
+        }
+
+    def report(self):
+        """Generate report and return exit code."""
+        results = self.get_results()
+
+        if self.output_json:
+            print(json.dumps(results, indent=2))
+        else:
+            if self.errors or self.warnings:
+                print(f"\n{'='*50}")
+                print(f"  Code Review: {self.file_path.name}")
+                print(f"{'='*50}\n")
+
+                for err in self.errors:
+                    line_info = f":{err['line']}" if err['line'] else ""
+                    print(f"  ERROR{line_info}: {err['message']}")
+
+                for warn in self.warnings:
+                    line_info = f":{warn['line']}" if warn['line'] else ""
+                    print(f"  WARNING{line_info}: {warn['message']}")
+
+                print()
+
+        if self.errors:
+            return 2
+        elif self.warnings:
+            return 1
+        return 0
+
+
+def watch_directory(directory, interval=1.0):
+    """Watch a directory for file changes and review them."""
+    directory = Path(directory)
+    last_modified = {}
+
+    print(f"Watching {directory} for changes (Ctrl+C to stop)...")
+
+    extensions = {".py", ".js", ".ts", ".sh", ".json"}
+
+    try:
+        while True:
+            for file_path in directory.rglob("*"):
+                if file_path.suffix not in extensions:
+                    continue
+                if any(p in str(file_path) for p in ["node_modules", "__pycache__", ".git", "venv"]):
+                    continue
+
+                try:
+                    mtime = file_path.stat().st_mtime
+                    if str(file_path) not in last_modified:
+                        last_modified[str(file_path)] = mtime
+                    elif mtime > last_modified[str(file_path)]:
+                        last_modified[str(file_path)] = mtime
+                        print(f"\nFile changed: {file_path}")
+                        reviewer = CodeReviewer(file_path)
+                        reviewer.run_all_checks()
+                        reviewer.report()
+                except Exception:
+                    pass
+
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\nStopped watching.")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Universal code review tool for AI coding assistants",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  code-review myfile.py                    Review a file
+  code-review --json myfile.py             JSON output for editors
+  code-review --watch ./src                Watch for changes
+  echo "myfile.py" | code-review --stdin   Pipe file path
+
+Integration:
+  Aider:    aider --lint-cmd "code-review"
+  VS Code:  Add as task with ${file}
+  Vim:      autocmd BufWritePost *.py !code-review %
+        """
+    )
+
+    parser.add_argument("files", nargs="*", help="Files to review")
+    parser.add_argument("--stdin", action="store_true", help="Read file path from stdin")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--watch", metavar="DIR", help="Watch directory for changes")
+    parser.add_argument("--version", action="version", version="code-review 1.0.0")
+
+    args = parser.parse_args()
+
+    # Watch mode
+    if args.watch:
+        watch_directory(args.watch)
+        return
+
+    # Get files to review
+    files = args.files
+
+    if args.stdin:
+        stdin_data = sys.stdin.read().strip()
+        if stdin_data:
+            # Handle JSON input (from Claude Code hooks)
+            try:
+                data = json.loads(stdin_data)
+                if "tool_input" in data:
+                    files = [data["tool_input"].get("file_path", "")]
+                else:
+                    files = [stdin_data]
+            except json.JSONDecodeError:
+                files = [stdin_data]
+
+    if not files:
+        parser.print_help()
+        sys.exit(0)
+
+    # Review files
+    max_exit_code = 0
+    all_results = []
+
+    for file_path in files:
+        if not file_path or not Path(file_path).exists():
+            continue
+
+        # Skip certain files
+        skip_patterns = [".min.js", ".min.css", "node_modules", "__pycache__", ".pyc"]
+        if any(p in file_path for p in skip_patterns):
+            continue
+
+        reviewer = CodeReviewer(file_path, output_json=args.json)
+        reviewer.run_all_checks()
+
+        if args.json:
+            all_results.append(reviewer.get_results())
+        else:
+            exit_code = reviewer.report()
+            max_exit_code = max(max_exit_code, exit_code)
+
+    if args.json and all_results:
+        print(json.dumps(all_results if len(all_results) > 1 else all_results[0], indent=2))
+
+    sys.exit(max_exit_code)
+
+
+if __name__ == "__main__":
+    main()
