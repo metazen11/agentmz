@@ -9,6 +9,7 @@
 - Claude Code automatically reads this file on session start
 - All directives, conventions, and project specs are in AGENTS.md
 - This file kept minimal to avoid duplication (DRY principle)
+- **No Co-Authored-By attribution in commits** - omit the Co-Authored-By trailer
 
 ## Quick Links
 
