@@ -257,4 +257,7 @@ if [ "$execute_mode" = true ] && [ "$has_message" = false ]; then
   set -- --message "Update files for local development." "$@"
 fi
 
+# Add code review linting
+set -- --lint-cmd "python3 $ROOT_DIR/scripts/code-review" "$@"
+
 exec aider "$@"

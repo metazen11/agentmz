@@ -71,4 +71,4 @@ docker exec -it \
   -e GIT_COMMITTER_EMAIL="$GIT_USER_EMAIL" \
   -w "$WORKDIR" \
   wfhub-v2-aider-api \
-  aider --model "ollama_chat/$MODEL" --yes --auto-commits $FILES
+  aider --lint-cmd "python3 /scripts/code-review" --model "ollama_chat/$MODEL" --yes --auto-commits $FILES
