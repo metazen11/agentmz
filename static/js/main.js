@@ -149,6 +149,16 @@ import {
 
 import { showIntegrationWizard, hideIntegrationWizard } from './integrations.js';
 
+import {
+  initTerminalElements,
+  toggleTerminal,
+  connectTerminal,
+  disconnectTerminal,
+  clearTerminal,
+  sendTerminalInput,
+  handleTerminalInput
+} from './terminal.js';
+
 // ============================================================================
 // Init function - orchestrates all module initialization
 // ============================================================================
@@ -162,6 +172,7 @@ async function init() {
   initGitElements();
   initSidebarElements();
   initAgentElements();
+  initTerminalElements();
 
   // Setup event listeners
   setupAgentEventListeners();
@@ -311,7 +322,15 @@ Object.assign(window, {
 
   // Integration wizard
   showIntegrationWizard,
-  hideIntegrationWizard
+  hideIntegrationWizard,
+
+  // Terminal
+  toggleTerminal,
+  connectTerminal,
+  disconnectTerminal,
+  clearTerminal,
+  sendTerminalInput,
+  handleTerminalInput
 });
 
 // ============================================================================

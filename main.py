@@ -45,6 +45,7 @@ from routers import (
     operations,
     logs,
     help_agents,
+    terminal,
 )
 
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
@@ -59,6 +60,7 @@ app.include_router(workspace.router, tags=["workspace"])
 app.include_router(operations.router, tags=["operations"])
 app.include_router(logs.router, tags=["logs"])
 app.include_router(help_agents.router, tags=["help"])
+app.include_router(terminal.router, tags=["terminal"])
 
 @app.get("/health/full")
 async def health_full():

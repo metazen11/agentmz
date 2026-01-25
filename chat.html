@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/static/css/logs.css">
 <link rel="stylesheet" href="/static/css/forms.css">
 <link rel="stylesheet" href="/static/css/integrations.css">
+<link rel="stylesheet" href="/static/css/terminal.css">
 </head>
 <body>
 <div class="container">
@@ -104,6 +105,33 @@
       <div id="log-pane-ollama" class="log-pane" style="display:none;"></div>
       <div id="log-pane-aider" class="log-pane" style="display:none;"></div>
       <div id="log-pane-main" class="log-pane" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Terminal Panel -->
+  <div class="terminal-panel">
+    <div class="terminal-header" onclick="toggleTerminal()">
+      <h3>Terminal</h3>
+      <div class="terminal-controls" onclick="event.stopPropagation()">
+        <select id="terminal-container">
+          <option value="aider">aider</option>
+          <option value="main">main-api</option>
+          <option value="ollama">ollama</option>
+          <option value="db">db</option>
+        </select>
+        <span id="terminal-connection" class="connection-status disconnected">disconnected</span>
+        <button class="btn-small" onclick="connectTerminal()">Connect</button>
+        <button class="btn-small secondary" onclick="disconnectTerminal()">Disconnect</button>
+        <button class="btn-small secondary" onclick="clearTerminal()">Clear</button>
+      </div>
+    </div>
+    <div id="terminal-body" class="terminal-body collapsed">
+      <div id="terminal-output" class="terminal-output"></div>
+      <div class="terminal-input-row">
+        <span class="terminal-prompt">$</span>
+        <input type="text" id="terminal-input" placeholder="Enter command..." onkeydown="handleTerminalInput(event)">
+        <button class="btn-small" onclick="sendTerminalInput()">Send</button>
+      </div>
     </div>
   </div>
 </div>
