@@ -287,15 +287,13 @@ main() {
   echo "=========================================="
   echo ""
 
-  # Step 1: Check prerequisites
-  if ! check_prerequisites; then
-    error "Please install missing prerequisites and try again"
-    exit 1
+  # Check for curl (needed for official installer)
+  if ! command_exists curl; then
+    warn "curl not found - will try pip method"
+    USE_PIP=true
   fi
 
-  echo ""
-
-  # Step 2: Install aider
+  # Install aider
   if ! install_aider; then
     error "Aider installation failed"
     exit 1
