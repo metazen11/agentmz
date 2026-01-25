@@ -2,7 +2,7 @@
 
 > This file exists for Claude Code auto-discovery. The canonical source of truth is **AGENTS.md**.
 
-**Read [AGENTS.md](AGENTS.md) for the complete operational framework.**
+**MUST review and comply with directives and conventions in [AGENTS.md](AGENTS.md).**
 
 ## Claude-Specific Notes
 
