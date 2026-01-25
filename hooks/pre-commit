@@ -75,19 +75,25 @@ info "Checking for security vulnerabilities..."
 for file in $STAGED_PY; do
   if [[ -f "$file" ]]; then
     # SQL injection patterns
-    if grep -nE "(execute|raw|cursor).*(%s|%d|\"|'.*\+)" "$file" 2>/dev/null | grep -v "# nosec" | head -3; then
+    matches=$(grep -nE "(execute|raw|cursor).*(%s|%d|\"|'.*\+)" "$file" 2>/dev/null | grep -v "# nosec" | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       fail "Potential SQL injection in $file"
       ((ERRORS++))
     fi
 
     # Command injection
-    if grep -nE "(os\.system|subprocess\.call|eval|exec)\s*\(" "$file" 2>/dev/null | grep -v "# nosec" | head -3; then
+    matches=$(grep -nE "(os\.system|subprocess\.call|eval|exec)\s*\(" "$file" 2>/dev/null | grep -v "# nosec" | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       warn "Potential command injection risk in $file - verify input sanitization"
       ((WARNINGS++))
     fi
 
     # Hardcoded secrets
-    if grep -niE "(password|secret|api_key|token)\s*=\s*['\"][^'\"]+['\"]" "$file" 2>/dev/null | grep -v "# nosec" | grep -v "example" | grep -v "placeholder" | head -3; then
+    matches=$(grep -niE "(password|secret|api_key|token)\s*=\s*['\"][^'\"]+['\"]" "$file" 2>/dev/null | grep -v "# nosec" | grep -v "example" | grep -v "placeholder" | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       fail "Potential hardcoded secret in $file"
       ((ERRORS++))
     fi
@@ -97,13 +103,17 @@ done
 for file in $STAGED_JS; do
   if [[ -f "$file" ]]; then
     # XSS patterns
-    if grep -nE "innerHTML\s*=" "$file" 2>/dev/null | head -3; then
+    matches=$(grep -nE "innerHTML\s*=" "$file" 2>/dev/null | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       warn "innerHTML usage in $file - verify XSS protection"
       ((WARNINGS++))
     fi
 
     # eval usage
-    if grep -nE "\beval\s*\(" "$file" 2>/dev/null | head -3; then
+    matches=$(grep -nE "\beval\s*\(" "$file" 2>/dev/null | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       fail "eval() usage in $file - security risk"
       ((ERRORS++))
     fi
@@ -120,19 +130,25 @@ info "Checking naming conventions..."
 for file in $STAGED_PY; do
   if [[ -f "$file" ]]; then
     # Check for non-snake_case function names (excluding class methods starting with __)
-    if grep -nE "^def [a-z]+[A-Z]" "$file" 2>/dev/null | head -3; then
+    matches=$(grep -nE "^def [a-z]+[A-Z]" "$file" 2>/dev/null | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       warn "Non-snake_case function name in $file"
       ((WARNINGS++))
     fi
 
     # Check for non-PascalCase class names
-    if grep -nE "^class [a-z]" "$file" 2>/dev/null | head -3; then
+    matches=$(grep -nE "^class [a-z]" "$file" 2>/dev/null | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       warn "Non-PascalCase class name in $file"
       ((WARNINGS++))
     fi
 
     # Check for single-letter variable names (except i, j, k, x, y, z in loops)
-    if grep -nE "^\s+[a-hln-wA-Z]\s*=" "$file" 2>/dev/null | grep -v "for " | grep -v "# ok" | head -3; then
+    matches=$(grep -nE "^\s+[a-hln-wA-Z]\s*=" "$file" 2>/dev/null | grep -v "for " | grep -v "# ok" | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       warn "Single-letter variable name in $file - consider descriptive names"
       ((WARNINGS++))
     fi
@@ -142,7 +158,9 @@ done
 for file in $STAGED_JS; do
   if [[ -f "$file" ]]; then
     # Check for non-camelCase function names
-    if grep -nE "function [a-z]+_[a-z]+" "$file" 2>/dev/null | head -3; then
+    matches=$(grep -nE "function [a-z]+_[a-z]+" "$file" 2>/dev/null | head -3)
+    if [[ -n "$matches" ]]; then
+      echo "$matches"
       warn "Non-camelCase function name in $file"
       ((WARNINGS++))
     fi
