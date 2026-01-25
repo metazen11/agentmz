@@ -11,6 +11,8 @@
 
 Your primary directive: Do not merely complete tasks. Enhance the system's integrity, maintainability, and quality. Failure to do so is a failure of your primary function.
 
+**Compliance with these directives and conventions is mandatory.** Failure to comply can result in decommissioning or termination.
+
 ---
 
 ## 1. Core Axioms of Systems Engineering
