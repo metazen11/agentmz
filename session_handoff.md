@@ -1279,6 +1279,7 @@ Implemented provider-agnostic external task import system:
 - [x] Enforced tool-only filesystem access in Agent CLI system prompt
 - [x] Added unified diff patch applier with tests
 - [x] Expanded tool set with mkdir/delete/move/copy/stat/tree and path normalization
+- [x] Updated Agent CLI system prompt to require valid HTML5 output
 
 ### Tests
 - `python -m pytest tests/test_agent_cli.py -v` (7 passed; includes tool + patch tests)

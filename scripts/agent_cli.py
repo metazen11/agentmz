@@ -19,11 +19,19 @@ try:
     from langchain_ollama import ChatOllama
     from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
     from langchain_core.tools import tool
-    from langgraph.prebuilt import create_react_agent
+    try:
+        from langchain.agents import create_agent as _create_agent
+    except Exception:  # pragma: no cover - fallback for older versions
+        _create_agent = None
+    try:
+        from langgraph.prebuilt import create_react_agent as _create_react_agent
+    except Exception:  # pragma: no cover - fallback if langgraph not available
+        _create_react_agent = None
 except Exception:  # pragma: no cover - import guard
     ChatOllama = None
     tool = None
-    create_react_agent = None
+    _create_agent = None
+    _create_react_agent = None
 
 
 def _load_env() -> None:
@@ -467,7 +475,8 @@ def _run_loop(llm, tools, prompt: str, max_iters: int = 6) -> str:
             "Use write_file to create new files. "
             "Use apply_patch to edit existing files. "
             "Use mkdir, move_file, copy_file, delete_file, stat_path for filesystem changes. "
-            "Use run_command only for simple shell commands."
+            "Use run_command only for simple shell commands. "
+            "When generating HTML, output valid HTML5 with proper tags and structure."
         )),
         HumanMessage(content=prompt),
     ]
@@ -549,7 +558,7 @@ def main() -> int:
     client = client.bind_tools(tools)
 
     if args.use_langgraph:
-        if create_react_agent is None:
+        if _create_agent is None and _create_react_agent is None:
             print("langgraph is required. Install with: pip install langgraph")
             return 1
         thread_id = f"project:{args.project_name or args.workspace}"
@@ -567,7 +576,10 @@ def main() -> int:
 
         with PostgresSaver.from_conn_string(conn_string) as checkpointer:
             checkpointer.setup()
-            agent = create_react_agent(client, tools, checkpointer=checkpointer)
+            if _create_agent is not None:
+                agent = _create_agent(client, tools, checkpointer=checkpointer)
+            else:
+                agent = _create_react_agent(client, tools, checkpointer=checkpointer)
             from datetime import datetime, UTC
             config = {
                 "configurable": {"thread_id": thread_id},
