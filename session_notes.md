@@ -17,3 +17,4 @@
 - Latest LangGraph edit test with AGENT_CLI_SSL_VERIFY=0 produced no tool calls; index.html remained invalid. Consider forcing tool_choice="any".
 - Added AGENT_CLI_TOOL_CHOICE + AGENT_CLI_TOOL_FALLBACK. Fallback parses JSON tool calls in text.
 - qwen3:1.7b pull timed out; still not available.
+- Set Agent CLI default base to http://localhost:11435 until HTTPS trust is fixed.

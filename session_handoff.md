@@ -1284,6 +1284,7 @@ Implemented provider-agnostic external task import system:
 - [x] Added AGENT_CLI_SSL_VERIFY flag to allow TLS verification toggle for local Ollama
 - [x] Added AGENT_CLI_TOOL_CHOICE and AGENT_CLI_TOOL_FALLBACK for tool forcing + fallback JSON parsing
 - [x] Added fallback parser to execute JSON tool calls embedded in model text
+- [x] Defaulted Agent CLI Ollama base to http://localhost:11435 until HTTPS trust is installed
 - [x] Added AGENT_CLI_SSL_VERIFY default handling in Agent CLI client construction
 
 ### Tests
