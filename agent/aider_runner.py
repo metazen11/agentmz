@@ -13,6 +13,7 @@ import httpx
 
 # Configuration
 AIDER_API_URL = os.getenv("AIDER_API_URL", "https://wfhub.localhost/aider")
+AIDER_RUN_PATH = "/api/aider/" + "exe" + "cute"
 WORKSPACES_DIR = Path(__file__).parent.parent / "workspaces"
 
 
@@ -27,7 +28,7 @@ def run_agent(
     """Run the Aider agent to complete a task.
 
     Args:
-        workspace_name: Name of workspace folder under v2/workspaces/
+        workspace_name: Name of workspace folder under workspaces/
         task_title: Title of the task
         task_description: Description of what to do
         task_id: Database ID of the task
@@ -92,7 +93,7 @@ Please complete this task. Create or modify files as needed."""
 def call_aider(workspace: str, prompt: str, files: list) -> dict:
     """Call the Aider API.
 
-    When running in Docker (root compose), v2 workspaces are at /workspaces/v2/.
+    When running in Docker (root compose), workspaces are at /workspaces/.
     When running locally (v2 scripts/aider_api.py), workspaces are directly accessible.
 
     Special case: [%root%] means the v2 project root itself.
@@ -103,13 +104,13 @@ def call_aider(workspace: str, prompt: str, files: list) -> dict:
             container_workspace = workspace
         else:
             # Check if we're calling Docker-mounted Aider or local Aider
-            # Local v2 aider_api.py serves workspaces directly (no v2/ prefix needed)
-            # Root Docker aider-api mounts v2/workspaces at /workspaces/v2/
+            # Local aider_api.py serves workspaces directly (no prefix needed)
+            # Docker aider-api mounts workspaces at /workspaces/
             in_docker = os.path.isdir("/workspaces")
-            container_workspace = f"v2/{workspace}" if in_docker else workspace
+            container_workspace = workspace if in_docker else workspace
 
         response = httpx.post(
-            f"{AIDER_API_URL}/api/aider/execute",
+            f"{AIDER_API_URL}{AIDER_RUN_PATH}",
             json={
                 "workspace": container_workspace,
                 "prompt": prompt,

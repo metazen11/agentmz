@@ -23,7 +23,7 @@ CONTAINER_ROOTS = {
 }
 
 DEFAULT_WORKDIRS = {
-    "aider": "/v2/workspaces",
+    "aider": "/workspaces",
     "main": "/app",
     "ollama": "/",
     "db": "/",

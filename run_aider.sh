@@ -39,7 +39,7 @@ if ! docker ps --format '{{.Names}}' | grep -q '^wfhub-v2-aider-api$'; then
 fi
 
 # Determine working directory
-# If workspace specified, use /v2/workspaces/$WORKSPACE
+# If workspace specified, use /workspaces/$WORKSPACE
 # Otherwise use /v2 (project root)
 if [ -n "$WORKSPACE" ]; then
   WORKDIR="/workspaces/$WORKSPACE"

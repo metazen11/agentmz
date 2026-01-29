@@ -2075,7 +2075,7 @@ function openFileInVSCode(path) {
     workspacePath = workspacePath.replace(/^\.?\/?(workspaces\/)?/, '').replace(/\/+$/, '');
 
     // Build full host path (WSL)
-    const basePath = '/mnt/c/dropbox/_coding/agentic/v2/workspaces';
+    const basePath = '/mnt/c/dropbox/_coding/agentic/workspaces';
     fullPath = `${basePath}/${workspacePath}/${path}`.replace(/\/+/g, '/');
   }
 

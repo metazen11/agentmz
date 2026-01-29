@@ -354,13 +354,13 @@ Keeping the stack running via `./start.sh` (or `docker compose --env-file .env -
 
 ## Workspaces
 
-Each project has a workspace directory under `v2/workspaces/`. The agent operates within this workspace for file operations.
+Each project has a workspace directory under `workspaces/`. The agent operates within this workspace for file operations.
 
-Special workspace: `[%root%]` - Points to the v2 project root itself (dogfooding).
+Special workspace: `[%root%]` - Points to the project root itself (dogfooding).
 
 Example workspace structure:
 ```
-v2/workspaces/poc/
+workspaces/poc/
 ├── .git/
 ├── game/
 │   └── index.html

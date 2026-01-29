@@ -217,13 +217,13 @@ class ContainerManager:
                 "AIDER_MODEL": f"ollama_chat/{self.model}",
                 "AGENT_MODEL": self.model,
                 "DEFAULT_WORKSPACE": os.path.basename(self.workspace_path),
-                "WORKSPACES_DIR": "/v2/workspaces",
+                "WORKSPACES_DIR": "/workspaces",
             },
             volumes={
                 workspaces_dir: {"bind": "/workspaces", "mode": "rw"},
                 str(self.v2_dir): {"bind": "/v2", "mode": "rw"},
             },
-            working_dir="/v2/workspaces",
+            working_dir="/workspaces",
             network_mode="bridge",
             links={self.OLLAMA_CONTAINER: self.OLLAMA_CONTAINER},
             detach=True,
@@ -311,7 +311,7 @@ def main():
     parser.add_argument("command", choices=["start", "stop", "status", "cleanup"],
                         help="Command to run")
     parser.add_argument("--workspace", "-w", default=None,
-                        help="Path to workspace (default: v2/workspaces/poc)")
+                        help="Path to workspace (default: workspaces/poc)")
     parser.add_argument("--model", "-m", default=None,
                         help="LLM model (default: qwen3:1.7b)")
 

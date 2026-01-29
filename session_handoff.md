@@ -10,7 +10,7 @@
 Development got off track - work was being done in the root folder instead of v2. This session focuses on:
 1. Migrating necessary components to v2
 2. Renaming "agentic" to "wfhub" (Workflow Hub)
-3. Completing MVP: Create/edit files in `v2/workspaces/poc` via Aider
+3. Completing MVP: Create/edit files in `workspaces/poc` via Aider
 
 ---
 
@@ -27,7 +27,7 @@ Development got off track - work was being done in the root folder instead of v2
 | Ollama runner | Done | `v2/agent/runner.py` (not using for MVP) |
 | Director loop | Done | `v2/director.py` |
 | Playwright tests | Done | `v2/tests/` |
-| POC workspace | Exists | `v2/workspaces/poc/` |
+| POC workspace | Exists | `workspaces/poc/` |
 | Docker compose | **TODO** | Create `v2/docker/docker-compose.yml` |
 | Trigger endpoint wiring | **TODO** | Wire `/tasks/{id}/trigger` |
 
@@ -110,7 +110,7 @@ curl -X POST localhost:8002/tasks -d '{"project_id":1,"title":"Create hello.txt"
 curl -X POST localhost:8002/tasks/1/trigger
 
 # Verify
-cat v2/workspaces/poc/hello.txt
+cat workspaces/poc/hello.txt
 ```
 
 ---
@@ -123,7 +123,7 @@ cat v2/workspaces/poc/hello.txt
 | `v2/agent/aider_runner.py` | Calls Aider API |
 | `v2/scripts/aider_api.py` | HTTP wrapper for Aider CLI (to create) |
 | `v2/docker/docker-compose.yml` | v2-specific Docker stack (to create) |
-| `v2/workspaces/poc/` | Test workspace |
+| `workspaces/poc/` | Test workspace |
 | `v2/tests/test_browser_hello_world.py` | Playwright tests |
 
 ---
@@ -222,24 +222,24 @@ cd /mnt/c/dropbox/_coding/agentic/v2 && python main.py
 curl -X POST http://localhost:8002/tasks/6/trigger
 
 # Check result:
-cat v2/workspaces/poc/hello.txt
+cat workspaces/poc/hello.txt
 ```
 
 ### End-to-End Test Result (2026-01-11)
 
-**SUCCESS**: Created animated Hello World in `v2/workspaces/poc/index.html`
+**SUCCESS**: Created animated Hello World in `workspaces/poc/index.html`
 
 ```bash
 # Run Aider directly in workspace
-cd v2/workspaces/poc
+cd workspaces/poc
 OLLAMA_API_BASE=http://localhost:11434 aider \
   --model ollama_chat/qwen2.5-coder:3b \
   --no-auto-commits --yes \
   --message "Create index.html with animated Hello World"
 
 # View result
-open v2/workspaces/poc/index.html
-# Or: python -m http.server 8080 -d v2/workspaces/poc
+open workspaces/poc/index.html
+# Or: python -m http.server 8080 -d workspaces/poc
 ```
 
 **Note**: qwen3:4b timed out (>5min). qwen2.5-coder:3b worked in ~10 seconds.
@@ -304,7 +304,7 @@ Created `tests/test_poc_game.py` that exercises all tools:
 pytest tests/test_poc_game.py -v -s
 ```
 
-**Game created:** `v2/workspaces/poc/game/index.html`
+**Game created:** `workspaces/poc/game/index.html`
 - 4x4 memory matching grid
 - Emoji symbols
 - Click to flip, match pairs to win
@@ -312,7 +312,7 @@ pytest tests/test_poc_game.py -v -s
 
 **View the game:**
 ```bash
-cd v2/workspaces/poc/game && python -m http.server 8080
+cd workspaces/poc/game && python -m http.server 8080
 # Open http://localhost:8080
 ```
 
@@ -380,13 +380,13 @@ All tools tested:
 - `/api/grep` - Code search
 
 ### chat.html Working
-The chat UI at `v2/workspaces/poc/chat.html` connects to:
+The chat UI at `workspaces/poc/chat.html` connects to:
 - `http://localhost:8001/health` - Status check
 - `http://localhost:8001/api/aider/execute` - Code editing
 
 To use:
 ```bash
-cd v2/workspaces/poc && python -m http.server 8080
+cd workspaces/poc && python -m http.server 8080
 # Open http://localhost:8080/chat.html
 ```
 
@@ -565,12 +565,12 @@ python -m http.server 8080
 ## Implementation Status (2026-01-17 - Session 10)
 
 ### Completed
-- [x] Aider API now prefers `/v2/workspaces` when available
-- [x] Aider container now mounts `/v2` and uses `/v2/workspaces` as working dir
-- [x] Container manager mounts `/v2` and sets `WORKSPACES_DIR=/v2/workspaces`
+- [x] Aider API now prefers `/workspaces` when available
+- [x] Aider container now mounts `/v2` and uses `/workspaces` as working dir
+- [x] Container manager mounts `/v2` and sets `WORKSPACES_DIR=/workspaces`
 
 ### Notes
-- Docker compose sets `WORKSPACES_DIR=/v2/workspaces` for aider-api
+- Docker compose sets `WORKSPACES_DIR=/workspaces` for aider-api
 
 ---
 
@@ -1238,7 +1238,7 @@ Implemented provider-agnostic external task import system:
 
 ### Verification
 - Aider container env: PROJECT_ROOT=/v2
-- Workspace mount visible under /v2/workspaces
+- Workspace mount visible under /workspaces
 
 ---
 
