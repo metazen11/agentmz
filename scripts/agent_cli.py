@@ -7,6 +7,7 @@ Defaults come from .env. Example:
 """
 import argparse
 import os
+import re
 import sys
 
 try:
@@ -73,6 +74,81 @@ def _build_client(model: str, base_url: str):
     return ChatOllama(model=model, base_url=base_url)
 
 
+def _apply_unified_patch(original: str, patch_text: str) -> str:
+    if not patch_text:
+        raise ValueError("Patch content required")
+
+    lines = patch_text.splitlines()
+    hunks = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if line.startswith("@@ "):
+            hunks.append({"header": line, "lines": []})
+            idx += 1
+            while idx < len(lines) and not lines[idx].startswith("@@ "):
+                hunks[-1]["lines"].append(lines[idx])
+                idx += 1
+            continue
+        idx += 1
+
+    if not hunks:
+        raise ValueError("No hunks found in patch")
+
+    original_lines = original.splitlines(keepends=True)
+    result = []
+    cursor = 0
+
+    def _parse_header(header: str) -> tuple[int, int]:
+        match = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", header)
+        if not match:
+            raise ValueError(f"Invalid hunk header: {header}")
+        return int(match.group(1)), int(match.group(2))
+
+    def _lines_match(expected: str, actual: str) -> bool:
+        if actual.endswith("\n"):
+            actual_core = actual[:-1]
+        else:
+            actual_core = actual
+        return expected == actual or expected == actual_core
+
+    for hunk in hunks:
+        orig_start, _ = _parse_header(hunk["header"])
+        target_index = max(orig_start - 1, 0)
+        if target_index < cursor or target_index > len(original_lines):
+            raise ValueError("Patch hunk out of range")
+        result.extend(original_lines[cursor:target_index])
+        cursor = target_index
+
+        for hunk_line in hunk["lines"]:
+            if hunk_line.startswith("\\"):
+                continue
+            if not hunk_line:
+                raise ValueError("Patch contains empty hunk line")
+            marker = hunk_line[0]
+            content = hunk_line[1:]
+            if marker == " ":
+                if cursor >= len(original_lines):
+                    raise ValueError("Patch context mismatch: unexpected EOF")
+                if not _lines_match(content, original_lines[cursor]):
+                    raise ValueError("Patch context mismatch")
+                result.append(original_lines[cursor])
+                cursor += 1
+            elif marker == "-":
+                if cursor >= len(original_lines):
+                    raise ValueError("Patch context mismatch: unexpected EOF")
+                if not _lines_match(content, original_lines[cursor]):
+                    raise ValueError("Patch context mismatch")
+                cursor += 1
+            elif marker == "+":
+                result.append(content + "\n")
+            else:
+                raise ValueError(f"Unsupported patch line: {hunk_line}")
+
+    result.extend(original_lines[cursor:])
+    return "".join(result)
+
+
 def _resolve_workspace(workspace: str) -> str:
     if not workspace:
         return os.path.join(os.getcwd(), "workspaces")
@@ -125,6 +201,21 @@ def _build_tools(workspace_root: str):
         return {"success": True, "files": entries, "count": len(entries)}
 
     @tool
+    def glob(pattern: str) -> dict:
+        """Find files using a glob pattern in the workspace."""
+        if not pattern:
+            return {"success": False, "error": "pattern required"}
+        import glob as glob_module
+
+        base = _safe_path(workspace_root, ".")
+        matches = glob_module.glob(os.path.join(base, pattern), recursive=True)
+        rel_matches = [
+            os.path.relpath(path, workspace_root)
+            for path in matches
+        ]
+        return {"success": True, "matches": sorted(rel_matches), "count": len(rel_matches)}
+
+    @tool
     def read_file(path: str, start: int = 1, lines: int = 200) -> dict:
         """Read a file from the workspace."""
         target = _safe_path(workspace_root, path)
@@ -143,6 +234,151 @@ def _build_tools(workspace_root: str):
             "total_lines": len(all_lines),
             "content": "".join(slice_lines),
         }
+
+    @tool
+    def write_file(path: str, content: str) -> dict:
+        """Write a new file to the workspace (fails if it exists)."""
+        if not path:
+            return {"success": False, "error": "path required"}
+        target = _safe_path(workspace_root, path)
+        if os.path.exists(target):
+            return {"success": False, "error": f"File already exists: {path}"}
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(content or "")
+        return {"success": True, "path": path, "bytes": len(content or "")}
+
+    @tool
+    def apply_patch(path: str, patch: str) -> dict:
+        """Apply a unified diff patch to an existing file."""
+        if not path:
+            return {"success": False, "error": "path required"}
+        if not patch:
+            return {"success": False, "error": "patch required"}
+        target = _safe_path(workspace_root, path)
+        if not os.path.isfile(target):
+            return {"success": False, "error": f"Not a file: {path}"}
+        with open(target, "r", encoding="utf-8", errors="ignore") as handle:
+            original = handle.read()
+        try:
+            updated = _apply_unified_patch(original, patch)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(updated)
+        return {"success": True, "path": path, "bytes": len(updated)}
+
+    @tool
+    def mkdir(path: str, exist_ok: bool = True) -> dict:
+        """Create a directory (and parents) inside the workspace."""
+        if not path:
+            return {"success": False, "error": "path required"}
+        target = _safe_path(workspace_root, path)
+        try:
+            os.makedirs(target, exist_ok=bool(exist_ok))
+        except OSError as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True, "path": path}
+
+    @tool
+    def delete_file(path: str, recursive: bool = False) -> dict:
+        """Delete a file or directory. Use recursive=true for directories."""
+        if not path:
+            return {"success": False, "error": "path required"}
+        target = _safe_path(workspace_root, path)
+        if not os.path.exists(target):
+            return {"success": False, "error": f"Path not found: {path}"}
+        try:
+            if os.path.isdir(target):
+                if not recursive:
+                    return {"success": False, "error": "Directory delete requires recursive=true"}
+                import shutil
+                shutil.rmtree(target)
+            else:
+                os.remove(target)
+        except OSError as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True, "path": path}
+
+    @tool
+    def move_file(src: str, dst: str) -> dict:
+        """Move/rename a file or directory within the workspace."""
+        if not src or not dst:
+            return {"success": False, "error": "src and dst required"}
+        src_path = _safe_path(workspace_root, src)
+        dst_path = _safe_path(workspace_root, dst)
+        if not os.path.exists(src_path):
+            return {"success": False, "error": f"Source not found: {src}"}
+        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+        try:
+            import shutil
+            shutil.move(src_path, dst_path)
+        except OSError as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True, "src": src, "dst": dst}
+
+    @tool
+    def copy_file(src: str, dst: str) -> dict:
+        """Copy a file or directory within the workspace."""
+        if not src or not dst:
+            return {"success": False, "error": "src and dst required"}
+        src_path = _safe_path(workspace_root, src)
+        dst_path = _safe_path(workspace_root, dst)
+        if not os.path.exists(src_path):
+            return {"success": False, "error": f"Source not found: {src}"}
+        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+        try:
+            import shutil
+            if os.path.isdir(src_path):
+                if os.path.exists(dst_path):
+                    return {"success": False, "error": f"Destination exists: {dst}"}
+                shutil.copytree(src_path, dst_path)
+            else:
+                shutil.copy2(src_path, dst_path)
+        except OSError as exc:
+            return {"success": False, "error": str(exc)}
+        return {"success": True, "src": src, "dst": dst}
+
+    @tool
+    def stat_path(path: str) -> dict:
+        """Return file metadata (size, type, mtime)."""
+        if not path:
+            return {"success": False, "error": "path required"}
+        target = _safe_path(workspace_root, path)
+        if not os.path.exists(target):
+            return {"success": False, "error": f"Path not found: {path}"}
+        info = os.stat(target)
+        return {
+            "success": True,
+            "path": path,
+            "size": info.st_size,
+            "mtime": info.st_mtime,
+            "is_dir": os.path.isdir(target),
+            "is_file": os.path.isfile(target),
+        }
+
+    @tool
+    def list_tree(path: str = ".", max_depth: int = 2, max_files: int = 200) -> dict:
+        """List files in a tree view up to a depth and limit."""
+        base = _safe_path(workspace_root, path)
+        if not os.path.isdir(base):
+            return {"success": False, "error": f"Not a directory: {path}"}
+        max_depth = max(0, int(max_depth))
+        max_files = max(1, min(int(max_files), 2000))
+        files = []
+        base_depth = base.rstrip(os.sep).count(os.sep)
+        for root, dirs, filenames in os.walk(base):
+            depth = root.count(os.sep) - base_depth
+            if depth > max_depth:
+                dirs[:] = []
+                continue
+            rel_root = os.path.relpath(root, workspace_root)
+            for name in sorted(filenames):
+                rel_path = os.path.join(rel_root, name)
+                files.append(rel_path.replace("\\", "/"))
+                if len(files) >= max_files:
+                    return {"success": True, "files": files, "count": len(files), "truncated": True}
+        return {"success": True, "files": files, "count": len(files), "truncated": False}
 
     @tool
     def grep(pattern: str, path: str = ".", glob_pattern: str = "*") -> dict:
@@ -204,17 +440,34 @@ def _build_tools(workspace_root: str):
             "stderr": result.stderr.strip(),
         }
 
-    return [list_files, read_file, grep, run_command]
+    return [
+        list_files,
+        glob,
+        read_file,
+        write_file,
+        apply_patch,
+        mkdir,
+        delete_file,
+        move_file,
+        copy_file,
+        stat_path,
+        list_tree,
+        grep,
+        run_command,
+    ]
 
 
 def _run_loop(llm, tools, prompt: str, max_iters: int = 6) -> str:
     debug = os.environ.get("LC_DEBUG", "").lower() in {"1", "true", "yes"}
     messages = [
         SystemMessage(content=(
-            "You can only see files by calling tools. "
-            "Use list_files to list directories. "
-            "Use read_file for contents. "
-            "Use run_command for simple shell commands."
+            "You MUST use tools for all filesystem operations. "
+            "Use list_files, list_tree, or glob to discover files. "
+            "Use read_file to inspect contents. "
+            "Use write_file to create new files. "
+            "Use apply_patch to edit existing files. "
+            "Use mkdir, move_file, copy_file, delete_file, stat_path for filesystem changes. "
+            "Use run_command only for simple shell commands."
         )),
         HumanMessage(content=prompt),
     ]

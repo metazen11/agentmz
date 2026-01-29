@@ -1275,9 +1275,15 @@ Implemented provider-agnostic external task import system:
 - [x] Switched Agent CLI memory scope to use project name (not project id)
 - [x] Updated Agent CLI defaults to use Caddy domain base URL and enable LangGraph by default
 - [x] Default Agent CLI project name set to `poc`
+- [x] Added LangGraph tool set for coding agent (glob/read/write/apply_patch/grep/run_command)
+- [x] Enforced tool-only filesystem access in Agent CLI system prompt
+- [x] Added unified diff patch applier with tests
+- [x] Expanded tool set with mkdir/delete/move/copy/stat/tree and path normalization
 
 ### Tests
-- `python -m pytest tests/test_agent_cli.py -v` (2 passed)
+- `python -m pytest tests/test_agent_cli.py -v` (7 passed; includes tool + patch tests)
 
 ### Notes
 - Pytest emitted a warning on Python 3.14.2: "Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater."
+- Python DNS resolution failed for `ollama.localhost` (`socket.gaierror`), even though `curl -k https://ollama.localhost/api/tags` returned 200.
+- LangGraph runs succeeded using `--ollama http://localhost:11435` and created `workspaces/poc/index.html` after a manual fix for invalid HTML output.

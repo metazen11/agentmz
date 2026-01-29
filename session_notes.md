@@ -7,3 +7,7 @@
 - Updated: renamed CLI to `scripts/agent_cli.py`, added `.env` defaults, switched memory scope to project name, added tests.
 - Defaults: Agent CLI now uses `https://wfhub.localhost/ollama` and LangGraph enabled by default in `.env.example`.
 - Default project name for Agent CLI set to `poc`.
+- Agent CLI now includes write/apply_patch tools and a unified diff applier.
+- Added mkdir/delete/move/copy/stat/list_tree tools for Agent CLI.
+- Python cannot resolve `ollama.localhost` (gaierror); curl works. Used `--ollama http://localhost:11435` for LangGraph runs.
+- LangGraph created `workspaces/poc/index.html`; manual fix applied to ensure valid animated Hello World.
