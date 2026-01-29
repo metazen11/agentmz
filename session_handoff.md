@@ -1281,6 +1281,10 @@ Implemented provider-agnostic external task import system:
 - [x] Expanded tool set with mkdir/delete/move/copy/stat/tree and path normalization
 - [x] Updated Agent CLI system prompt to require valid HTML5 output
 - [x] Added Agent CLI debug logging for messages/tools/payloads (AGENT_CLI_DEBUG / AGENT_CLI_DEBUG_PAYLOAD)
+- [x] Added AGENT_CLI_SSL_VERIFY flag to allow TLS verification toggle for local Ollama
+- [x] Added AGENT_CLI_TOOL_CHOICE and AGENT_CLI_TOOL_FALLBACK for tool forcing + fallback JSON parsing
+- [x] Added fallback parser to execute JSON tool calls embedded in model text
+- [x] Added AGENT_CLI_SSL_VERIFY default handling in Agent CLI client construction
 
 ### Tests
 - `python -m pytest tests/test_agent_cli.py -v` (7 passed; includes tool + patch tests)
@@ -1289,3 +1293,6 @@ Implemented provider-agnostic external task import system:
 - Pytest emitted a warning on Python 3.14.2: "Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater."
 - Python DNS resolution failed for `ollama.localhost` (`socket.gaierror`), even though `curl -k https://ollama.localhost/api/tags` returned 200.
 - LangGraph runs succeeded using `--ollama http://localhost:11435` and created `workspaces/poc/index.html` after a manual fix for invalid HTML output.
+- Even with AGENT_CLI_SSL_VERIFY=0 and debug payload logging enabled, the LangGraph run did not invoke tools and left `workspaces/poc/index.html` invalid. Consider forcing tool_choice="any" via bind_tools to require tool calls.
+- `qwen3:1.7b` pull timed out; model not present in `ollama list`.
+- With `AGENT_CLI_TOOL_CHOICE=any` + `AGENT_CLI_TOOL_FALLBACK=1`, qwen2.5-coder emits JSON tool calls in text. Fallback executes `read_file` but `apply_patch` payloads are not valid unified diffs, so edits still fail and `index.html` remains invalid.

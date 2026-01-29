@@ -31,6 +31,7 @@ def test_agent_cli_defaults_fallback_to_shared_env(monkeypatch):
     monkeypatch.delenv("AGENT_CLI_PROJECT_NAME", raising=False)
     monkeypatch.delenv("AGENT_CLI_USE_LANGGRAPH", raising=False)
     monkeypatch.delenv("AGENT_CLI_MAX_ITERS", raising=False)
+    monkeypatch.delenv("AGENT_CLI_SSL_VERIFY", raising=False)
     monkeypatch.setenv("AGENT_MODEL", "agent-model")
     monkeypatch.setenv("OLLAMA_API_BASE_LOCAL", "http://local-ollama:11434")
     monkeypatch.setenv("DEFAULT_WORKSPACE", "shared_workspace")
@@ -44,6 +45,63 @@ def test_agent_cli_defaults_fallback_to_shared_env(monkeypatch):
     assert defaults["project_name"] == ""
     assert defaults["use_langgraph"] is False
     assert defaults["max_iters"] == 6
+    assert defaults["ssl_verify"] is True
+
+
+def test_agent_cli_defaults_ssl_verify_toggle(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI_SSL_VERIFY", "0")
+
+    from scripts import agent_cli
+
+    defaults = agent_cli._resolve_defaults(os.environ)
+    assert defaults["ssl_verify"] is False
+
+
+def test_agent_cli_defaults_tool_choice(monkeypatch):
+    monkeypatch.setenv("AGENT_CLI_TOOL_CHOICE", "any")
+
+    from scripts import agent_cli
+
+    defaults = agent_cli._resolve_defaults(os.environ)
+    assert defaults["tool_choice"] == "any"
+
+
+def test_extract_tool_calls_from_json_object():
+    from scripts import agent_cli
+
+    text = '{"name": "read_file", "arguments": {"path": "index.html"}}'
+    calls = agent_cli._extract_tool_calls_from_text(text)
+    assert calls == [{"name": "read_file", "args": {"path": "index.html"}}]
+
+
+def test_extract_tool_calls_from_json_list():
+    from scripts import agent_cli
+
+    text = '[{"name": "glob", "arguments": {"pattern": "*.py"}}]'
+    calls = agent_cli._extract_tool_calls_from_text(text)
+    assert calls == [{"name": "glob", "args": {"pattern": "*.py"}}]
+
+
+def test_extract_tool_calls_from_fenced_block():
+    from scripts import agent_cli
+
+    text = "```json\n{\"name\":\"read_file\",\"arguments\":{\"path\":\"README.md\"}}\n```"
+    calls = agent_cli._extract_tool_calls_from_text(text)
+    assert calls == [{"name": "read_file", "args": {"path": "README.md"}}]
+
+
+def test_extract_tool_calls_from_multiple_fenced_blocks():
+    from scripts import agent_cli
+
+    text = (
+        "```json\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"index.html\"}}\n```\n"
+        "```json\n{\"name\": \"apply_patch\", \"arguments\": {\"path\": \"index.html\", \"patch\": \"@@\"}}\n```"
+    )
+    calls = agent_cli._extract_tool_calls_from_text(text)
+    assert calls == [
+        {"name": "read_file", "args": {"path": "index.html"}},
+        {"name": "apply_patch", "args": {"path": "index.html", "patch": "@@"}},
+    ]
 
 
 def test_apply_patch_replaces_line():

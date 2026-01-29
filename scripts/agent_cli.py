@@ -87,11 +87,45 @@ def _debug_log(payload: dict) -> None:
     print(json.dumps(payload, indent=2))
 
 
+def _extract_tool_calls_from_text(text: str) -> list[dict]:
+    if not text:
+        return []
+    raw = text.strip()
+    blocks = []
+    fence_pattern = re.compile(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", re.DOTALL)
+    for match in fence_pattern.findall(raw):
+        blocks.append(match.strip())
+    if not blocks:
+        blocks = [raw]
+
+    calls: list[dict] = []
+    for payload in blocks:
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            name = data.get("name")
+            args = data.get("arguments") or data.get("args") or {}
+            if name:
+                calls.append({"name": name, "args": args})
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict) and item.get("name"):
+                    calls.append({"name": item.get("name"), "args": item.get("arguments") or item.get("args") or {}})
+    return calls
+
+
 def _resolve_defaults(env: dict) -> dict:
     def _truthy(value: str | None) -> bool:
         if value is None:
             return False
         return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _bool_with_default(value: str | None, default: bool) -> bool:
+        if value is None or value == "":
+            return default
+        return _truthy(value)
 
     def _int_or(value: str | None, fallback: int) -> int:
         if value is None or value == "":
@@ -112,6 +146,8 @@ def _resolve_defaults(env: dict) -> dict:
     project_name = env.get("AGENT_CLI_PROJECT_NAME", "")
     use_langgraph = _truthy(env.get("AGENT_CLI_USE_LANGGRAPH"))
     max_iters = _int_or(env.get("AGENT_CLI_MAX_ITERS"), 6)
+    ssl_verify = _bool_with_default(env.get("AGENT_CLI_SSL_VERIFY"), True)
+    tool_choice = env.get("AGENT_CLI_TOOL_CHOICE", "").strip() or "auto"
     return {
         "model": model,
         "base_url": base_url,
@@ -119,15 +155,24 @@ def _resolve_defaults(env: dict) -> dict:
         "project_name": project_name,
         "use_langgraph": use_langgraph,
         "max_iters": max_iters,
+        "ssl_verify": ssl_verify,
+        "tool_choice": tool_choice,
     }
 
 
-def _build_client(model: str, base_url: str):
+def _build_client(model: str, base_url: str, ssl_verify: bool):
     if ChatOllama is None:
         raise RuntimeError(
             "langchain-ollama is required. Install with: pip install langchain-ollama"
         )
-    return ChatOllama(model=model, base_url=base_url)
+    client_kwargs = {"verify": ssl_verify}
+    return ChatOllama(
+        model=model,
+        base_url=base_url,
+        client_kwargs=client_kwargs,
+        sync_client_kwargs=client_kwargs,
+        async_client_kwargs=client_kwargs,
+    )
 
 
 def _apply_unified_patch(original: str, patch_text: str) -> str:
@@ -555,22 +600,10 @@ def _build_tools(workspace_root: str):
     ]
 
 
-def _run_loop(llm, tools, prompt: str, max_iters: int = 6) -> str:
+def _run_tool_fallback(llm, tools, messages: list[BaseMessage], max_iters: int, fallback_parser: bool) -> str:
     debug = _debug_enabled()
     debug_payload = _debug_payload_enabled()
-    messages = [
-        SystemMessage(content=(
-            "You MUST use tools for all filesystem operations. "
-            "Use list_files, list_tree, or glob to discover files. "
-            "Use read_file to inspect contents. "
-            "Use write_file to create new files. "
-            "Use apply_patch to edit existing files. "
-            "Use mkdir, move_file, copy_file, delete_file, stat_path for filesystem changes. "
-            "Use run_command only for simple shell commands. "
-            "When generating HTML, output valid HTML5 with proper tags and structure."
-        )),
-        HumanMessage(content=prompt),
-    ]
+    tool_map = {t.name: t for t in tools}
 
     for _ in range(max_iters):
         if debug_payload:
@@ -585,22 +618,51 @@ def _run_loop(llm, tools, prompt: str, max_iters: int = 6) -> str:
         tool_calls = getattr(response, "tool_calls", None) or []
         if debug and tool_calls:
             print(f"[LC] tool_calls: {tool_calls}")
+        if not tool_calls and fallback_parser:
+            parsed = _extract_tool_calls_from_text(response.content or "")
+            if parsed:
+                tool_calls = parsed
+                if debug:
+                    print(f"[AGENT_CLI_DEBUG] parsed_tool_calls: {tool_calls}")
         if not tool_calls:
+            if debug:
+                print("[AGENT_CLI_DEBUG] final_response")
+                print(response.content or "")
             return response.content or ""
-        tool_map = {t.name: t for t in tools}
+
         for call in tool_calls:
             name = call.get("name")
             args = call.get("args") or {}
             tool_fn = tool_map.get(name)
             if not tool_fn:
-                messages.append(ToolMessage(content=f"Unknown tool: {name}", tool_call_id=call.get("id", name)))
+                messages.append(ToolMessage(content=f"Unknown tool: {name}", tool_call_id=name or "tool"))
                 continue
             try:
                 result = tool_fn.invoke(args)
             except Exception as exc:
                 result = {"success": False, "error": str(exc)}
-            messages.append(ToolMessage(content=str(result), tool_call_id=call.get("id", name)))
+            messages.append(ToolMessage(content=str(result), tool_call_id=name or "tool"))
     return "Max iterations reached without final response."
+
+
+def _run_loop(llm, tools, prompt: str, max_iters: int = 6, fallback_parser: bool = False) -> str:
+    debug = _debug_enabled()
+    messages = [
+        SystemMessage(content=(
+            "You MUST use tools for all filesystem operations. "
+            "Use list_files, list_tree, or glob to discover files. "
+            "Use read_file to inspect contents. "
+            "Use write_file to create new files. "
+            "Use apply_patch to edit existing files. "
+            "Use mkdir, move_file, copy_file, delete_file, stat_path for filesystem changes. "
+            "Use run_command only for simple shell commands. "
+            "When generating HTML, output valid HTML5 with proper tags and structure."
+        )),
+        HumanMessage(content=prompt),
+    ]
+    if debug:
+        print("[AGENT_CLI_DEBUG] starting_tool_loop")
+    return _run_tool_fallback(llm, tools, messages, max_iters=max_iters, fallback_parser=fallback_parser)
 
 
 def _retention_cleanup(conn_string: str, days: int) -> None:
@@ -647,14 +709,16 @@ def main() -> int:
     prompt = args.prompt
 
     try:
-        client = _build_client(model, base_url)
+        client = _build_client(model, base_url, defaults["ssl_verify"])
     except RuntimeError as exc:
         print(str(exc))
         return 1
 
     workspace_root = _resolve_workspace(args.workspace)
     tools = _build_tools(workspace_root)
-    client = client.bind_tools(tools)
+    client = client.bind_tools(tools, tool_choice=defaults["tool_choice"])
+
+    fallback_parser = os.environ.get("AGENT_CLI_TOOL_FALLBACK", "").lower() in {"1", "true", "yes"}
 
     if args.use_langgraph:
         if _create_agent is None and _create_react_agent is None:
@@ -698,11 +762,40 @@ def main() -> int:
                 config=config,
             )
             messages = result.get("messages", [])
+            if _debug_enabled():
+                print("[AGENT_CLI_DEBUG] langgraph_messages")
+                print(json.dumps(_serialize_messages(messages), indent=2))
+            if fallback_parser:
+                tail = messages[-1] if messages else None
+                if tail and isinstance(tail, BaseMessage):
+                    parsed = _extract_tool_calls_from_text(tail.content or "")
+                    if parsed:
+                        if _debug_enabled():
+                            print(f"[AGENT_CLI_DEBUG] parsed_tool_calls: {parsed}")
+                        for call in parsed:
+                            tool_name = call.get("name") or "tool"
+                            try:
+                                tool_fn = next(t for t in tools if t.name == tool_name)
+                                result_payload = tool_fn.invoke(call.get("args") or {})
+                            except StopIteration:
+                                result_payload = {"success": False, "error": f"Unknown tool: {tool_name}"}
+                            except Exception as exc:
+                                result_payload = {"success": False, "error": str(exc)}
+                            messages.append(ToolMessage(content=str(result_payload), tool_call_id=tool_name))
+                        followup = _run_tool_fallback(
+                            client,
+                            tools,
+                            messages,
+                            max_iters=max(1, args.max_iters - 1),
+                            fallback_parser=fallback_parser,
+                        )
+                        print(followup)
+                        return 0
             final = messages[-1].content if messages else ""
             print(final)
             return 0
 
-    response = _run_loop(client, tools, prompt, max_iters=args.max_iters)
+    response = _run_loop(client, tools, prompt, max_iters=args.max_iters, fallback_parser=fallback_parser)
     print(response)
     return 0
 
