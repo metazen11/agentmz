@@ -21,17 +21,14 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
+# Install aider if not available (optional - script continues without it)
 if ! command -v aider >/dev/null 2>&1; then
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 is required to install aider." >&2
-    exit 1
+  if command -v python3 >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
+    echo "Installing aider-chat..."
+    python3 -m pip install --user aider-chat || echo "  (aider install failed, continuing...)"
+  else
+    echo "  (aider not installed - run './install.sh --aider' to install)"
   fi
-  if ! python3 -m pip --version >/dev/null 2>&1; then
-    echo "pip is required to install aider. Install pip and re-run." >&2
-    exit 1
-  fi
-  echo "Installing aider-chat..."
-  python3 -m pip install --user aider-chat
 fi
 
 if [ ! -f "$wrapper" ]; then

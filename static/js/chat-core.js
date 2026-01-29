@@ -136,18 +136,56 @@ export function hideGlobalTooltip() {
 // Messages
 // ============================================================================
 
+function formatTimestamp(date = new Date()) {
+  const h = date.getHours().toString().padStart(2, '0');
+  const m = date.getMinutes().toString().padStart(2, '0');
+  const s = date.getSeconds().toString().padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function getMessageLabel(type) {
+  switch (type) {
+    case 'user': return 'PROMPT';
+    case 'assistant': return 'RESPONSE';
+    case 'system': return 'SYSTEM';
+    case 'error': return 'ERROR';
+    default: return type.toUpperCase();
+  }
+}
+
 export function addMessage(type, content, toolCalls = null) {
   const div = document.createElement('div');
   div.className = 'message ' + type;
 
+  const timestamp = formatTimestamp();
+  const label = getMessageLabel(type);
+
+  // Create header with timestamp and label
+  const header = document.createElement('div');
+  header.className = 'message-header';
+  header.innerHTML = `<span class="message-timestamp">${timestamp}</span> <span class="message-label">${label}</span>`;
+
+  // Create body
+  const body = document.createElement('div');
+  body.className = 'message-body';
+
   if (type === 'assistant') {
-    div.innerHTML = renderMarkdown(content);
+    body.innerHTML = renderMarkdown(content);
     if (toolCalls && toolCalls.length > 0) {
-      div.innerHTML += renderToolCalls(toolCalls);
+      body.innerHTML += renderToolCalls(toolCalls);
     }
+  } else if (type === 'user') {
+    // Show prompt with better formatting
+    const pre = document.createElement('pre');
+    pre.className = 'message-prompt';
+    pre.textContent = content;
+    body.appendChild(pre);
   } else {
-    div.textContent = content;
+    body.textContent = content;
   }
+
+  div.appendChild(header);
+  div.appendChild(body);
 
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -252,12 +290,17 @@ function isLikelyVisionModel(model) {
   if (state.visionModelRegex) {
     try {
       const regex = new RegExp(state.visionModelRegex, 'i');
-      return regex.test(model);
+      const result = regex.test(model);
+      console.log(`[Vision] isLikelyVisionModel("${model}") with config regex: ${result}`);
+      return result;
     } catch (err) {
+      console.warn(`[Vision] Regex error for "${model}":`, err.message);
       return false;
     }
   }
-  return /(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\\.5vl|qwen2-vl|qwen-vl|clip)/i.test(model);
+  const result = /(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\.5vl|qwen2-vl|qwen-vl|clip)/i.test(model);
+  console.log(`[Vision] isLikelyVisionModel("${model}") with fallback regex: ${result}`);
+  return result;
 }
 
 export async function loadModels() {
@@ -322,9 +365,15 @@ export async function loadModels() {
     }
 
     if (visionModelSelectEl) {
+      console.log('[Vision] models:', models);
+      console.log('[Vision] visionAllowlist:', visionAllowlist);
+      console.log('[Vision] state.visionModelRegex:', state.visionModelRegex);
+
       const visionModels = visionAllowlist.length
         ? models.filter(model => visionAllowlist.includes(model))
         : models.filter(model => isLikelyVisionModel(model));
+
+      console.log('[Vision] filtered visionModels:', visionModels);
 
       if (!visionModels.length) {
         visionModelSelectEl.innerHTML = '<option value="">No vision models found</option>';

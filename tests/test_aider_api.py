@@ -173,6 +173,32 @@ class TestConfigEndpoint:
         # Restore
         api_post("/api/config", {"max_iterations": original_max})
 
+    def test_model_switch_rejects_models_without_tools(self):
+        """Model switch should fail when the model doesn't support tools."""
+        config = api_get("/api/config")
+        original_model = config["config"]["agent_model"]
+
+        models = api_get("/api/models")
+        if not models.get("success"):
+            pytest.skip("Model list unavailable")
+        model_list = models.get("models", [])
+
+        candidate = "gemma3:4b"
+        if candidate not in model_list:
+            pytest.skip(f"{candidate} not available")
+
+        result = api_post("/api/model/switch", {"model": candidate, "timeout": 10})
+        if result.get("success"):
+            # If tools are supported on this setup, don't fail the test.
+            api_post("/api/model/switch", {"model": original_model, "timeout": 10})
+            pytest.skip(f"{candidate} supports tools in this environment")
+
+        assert "error" in result
+        assert result["error"].strip()
+
+        health = api_get("/health")
+        assert health["agent_model"] == original_model
+
 
 class TestGrepEndpoint:
     """Tests for POST /api/grep endpoint."""

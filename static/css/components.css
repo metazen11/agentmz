@@ -56,6 +56,13 @@ button.secondary:hover { background: #777; }
 .selector select:disabled {
   color: #777;
 }
+.mode-toggle {
+  gap: 8px;
+}
+.mode-toggle input[type="checkbox"] {
+  transform: translateY(1px);
+  accent-color: #4CAF50;
+}
 .model-selector {
   margin-left: auto;
 }

@@ -79,6 +79,10 @@ class CodeReviewer:
             if re.search(r"\)\s*=>\s*\{.*\)\s*=>\s*\{.*\)\s*=>\s*\{", self.content):
                 self.add_warning(0, "Nested callbacks - consider async/await")
 
+        elif self.ext == "php":
+            if re.search(r"class.*extends.*extends", self.content):
+                self.add_warning(0, "Deep class inheritance - consider composition")
+
     def check_security(self):
         """Check for security vulnerabilities."""
         lines = self.content.split("\n")
@@ -124,6 +128,52 @@ class CodeReviewer:
                 if re.search(r'\$[a-zA-Z_][a-zA-Z0-9_]*[^"\'\a-zA-Z0-9_}]', line):
                     self.add_warning(i, "Unquoted variable - use \"$VAR\"")
 
+        elif self.ext == "php":
+            for i, line in enumerate(lines, 1):
+                if "// nosec" in line or "# nosec" in line:
+                    continue
+
+                # SQL injection
+                if re.search(r'(\$_(GET|POST|REQUEST|COOKIE)\[.*\].*query|mysql_query.*\$)', line, re.I):
+                    self.add_error(i, "Potential SQL injection - use prepared statements")
+
+                # Command injection
+                if re.search(r'(exec|system|passthru|shell_exec|popen)\s*\(.*\$', line):
+                    self.add_error(i, "Potential command injection - sanitize input")
+
+                # XSS - echo without escaping
+                if re.search(r'echo\s+\$_(GET|POST|REQUEST)', line):
+                    self.add_error(i, "Potential XSS - use htmlspecialchars()")
+
+                # File inclusion
+                if re.search(r'(include|require|include_once|require_once)\s*\(?\s*\$', line):
+                    self.add_error(i, "Potential file inclusion vulnerability")
+
+                # Hardcoded credentials
+                if re.search(r"(password|secret|api_key|token)\s*=\s*['\"][^'\"]{8,}['\"]", line, re.I):
+                    if not any(x in line.lower() for x in ["example", "placeholder", "test", "env"]):
+                        self.add_error(i, "Hardcoded secret - use environment variables")
+
+        elif self.ext in ("html", "htm"):
+            for i, line in enumerate(lines, 1):
+                # Inline JavaScript event handlers
+                if re.search(r'on(click|load|error|mouseover|submit)\s*=', line, re.I):
+                    self.add_warning(i, "Inline event handler - use addEventListener")
+
+                # Inline styles (minor)
+                if re.search(r'style\s*=\s*["\']', line) and len(line) > 100:
+                    self.add_warning(i, "Long inline style - consider CSS classes")
+
+                # Mixed content
+                if re.search(r'(src|href)\s*=\s*["\']http://', line, re.I):
+                    self.add_warning(i, "HTTP resource on HTTPS page - use HTTPS")
+
+        elif self.ext == "css":
+            for i, line in enumerate(lines, 1):
+                # @import (performance)
+                if re.search(r'@import\s+url', line):
+                    self.add_warning(i, "@import impacts performance - use <link> instead")
+
     def check_naming(self):
         """Check naming conventions."""
         lines = self.content.split("\n")
@@ -139,6 +189,15 @@ class CodeReviewer:
             for i, line in enumerate(lines, 1):
                 if re.search(r"function\s+[a-z]+_[a-z]+", line):
                     self.add_warning(i, "Function should be camelCase")
+
+        elif self.ext == "php":
+            for i, line in enumerate(lines, 1):
+                # PSR-1: Method names should be camelCase
+                if re.match(r"^\s*(public|private|protected)?\s*function\s+[a-z]+_[a-z]+", line):
+                    self.add_warning(i, "Method should be camelCase (PSR-1)")
+                # PSR-1: Class names should be PascalCase
+                if re.match(r"^\s*class\s+[a-z]", line):
+                    self.add_warning(i, "Class should be PascalCase (PSR-1)")
 
     def check_syntax(self):
         """Validate syntax."""
@@ -164,6 +223,14 @@ class CodeReviewer:
 
             elif self.ext == "json":
                 json.loads(self.content)
+
+            elif self.ext == "php":
+                result = subprocess.run(
+                    ["php", "-l", str(self.file_path)],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode != 0:
+                    self.add_error(0, f"PHP syntax error: {result.stderr.strip()}")
 
         except subprocess.TimeoutExpired:
             pass
@@ -247,7 +314,7 @@ def watch_directory(directory, interval=1.0):
 
     print(f"Watching {directory} for changes (Ctrl+C to stop)...")
 
-    extensions = {".py", ".js", ".ts", ".sh", ".json"}
+    extensions = {".py", ".js", ".ts", ".sh", ".json", ".php", ".html", ".htm", ".css"}
 
     try:
         while True:

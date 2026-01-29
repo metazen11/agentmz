@@ -2,6 +2,10 @@
 #
 # install_agent.sh - Register the 'agent' command in shell rc files
 #
+# NOTE: This script is now integrated into install.sh
+#       You can use: ./install.sh --agent
+#       This standalone script is kept for backward compatibility.
+#
 # This script:
 #   1. Sets AGENTMZ_DIR environment variable
 #   2. Sources wrapper_init.sh for the 'agent' function

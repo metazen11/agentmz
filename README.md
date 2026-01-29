@@ -18,7 +18,7 @@ Use `--no-browser` flag to disable: `./start.sh --no-browser`
 ## Architecture
 
 ```
-v2/
+
 ├── install.sh           # One-command installer (venv, deps, Docker, migrations)
 ├── start.sh             # Start services after installation
 ├── chat.html            # Single-file web UI (vanilla JS, no build step)

@@ -21,7 +21,8 @@ import {
   setNodes,
   setSelectedNodeId,
   setAvailableNodes,
-  setCurrentSettingsTab
+  setCurrentSettingsTab,
+  setAppConfig
 } from './state.js';
 import {
   addMessage,
@@ -50,6 +51,23 @@ let newTaskNodeSelectEl, editTaskNodeSelectEl;
 // ============================================================================
 // Init
 // ============================================================================
+
+// Fetch app config from backend (project root, workspaces dir, etc.)
+export async function fetchAppConfig() {
+  try {
+    const res = await fetch(`${MAIN_API}/config`);
+    if (res.ok) {
+      const config = await res.json();
+      setAppConfig({
+        projectRoot: config.project_root || '',
+        workspacesDir: config.workspaces_dir || '',
+        defaultWorkspace: config.default_workspace || 'poc'
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to fetch app config:', err.message);
+  }
+}
 
 export function initSidebarElements() {
   projectListEl = document.getElementById('project-list');
@@ -279,7 +297,7 @@ async function logAiderWorkspaceAccess() {
       let displayRoot = root;
       let displayCurrent = current;
       if (state.selectedProject?.workspace_path?.startsWith('[%root%]')) {
-        displayRoot = '/mnt/c/dropbox/_coding/agentic/v2';
+        displayRoot = state.appConfig.projectRoot || 'project root';
         const subPath = state.selectedProject.workspace_path.replace('[%root%]', '').replace(/^\//, '');
         displayCurrent = subPath ? subPath : '[%root%]';
       }
@@ -427,6 +445,15 @@ export function renderTasks() {
     const title = t.title || 'Untitled task';
     const status = t.status || 'backlog';
     const nodeLabel = t.node_name || (t.node_id ? `#${t.node_id}` : 'unknown');
+
+    // Subtask info
+    const subtasks = Array.isArray(t.children) ? t.children : [];
+    const subtaskCount = subtasks.length;
+    const completedSubtasks = subtasks.filter(s => s.status === 'completed').length;
+    const subtaskBadge = subtaskCount > 0
+      ? `<span class="subtask-badge" title="${completedSubtasks}/${subtaskCount} subtasks complete">${completedSubtasks}/${subtaskCount}</span>`
+      : '';
+
     const tooltipRows = [
       { label: 'ID', value: t.id ?? '-' },
       { label: 'Title', value: title },
@@ -434,13 +461,14 @@ export function renderTasks() {
       t.parent_id ? { label: 'Parent', value: `#${t.parent_id}` } : null,
       { label: 'Node', value: nodeLabel },
       { label: 'Status', value: status },
+      subtaskCount > 0 ? { label: 'Subtasks', value: `${completedSubtasks}/${subtaskCount} complete` } : null,
       { label: 'Created', value: formatDate(t.created_at) }
     ];
     return `
     <li class="${state.selectedTask?.id === t.id ? 'selected' : ''} has-tooltip"
         onclick="openTaskEditor(${t.id})">
       <div class="task-row">
-        <span class="task-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+        <span class="task-title" title="${escapeHtml(title)}">${escapeHtml(title)}${subtaskBadge}</span>
         <div class="task-actions">
           <button onclick="event.stopPropagation(); openTaskEditor(${t.id})">Edit</button>
           <button class="delete" onclick="event.stopPropagation(); deleteTask(${t.id})">Delete</button>
@@ -530,13 +558,19 @@ export function renderSubtasks(taskId) {
   }
   subtaskListEl.innerHTML = children.map(child => {
     const title = escapeHtml(child.title || `Task ${child.id}`);
-    const status = escapeHtml(child.status || 'backlog');
+    const status = child.status || 'backlog';
     const nodeLabel = child.node_name ? escapeHtml(child.node_name) : (child.node_id ? `node ${child.node_id}` : '');
-    const meta = [status, nodeLabel].filter(Boolean).join(' · ');
+    const meta = [nodeLabel].filter(Boolean).join(' · ');
+    const statusClass = `subtask-status-${status.replace(/[^a-z]/g, '')}`;
+    const depth = child.depth || 1;
+    const depthIndicator = depth > 1 ? `<span class="depth-indicator">${'└'.repeat(depth - 1)}</span>` : '';
     return `
       <div class="subtask-item" onclick="openTaskEditor(${child.id})">
-        <div class="subtask-title">#${child.id} ${title}</div>
-        <div class="subtask-meta">${escapeHtml(meta)}</div>
+        <div class="subtask-title">${depthIndicator}#${child.id} ${title}</div>
+        <div class="subtask-meta">
+          <span class="subtask-status ${statusClass}">${escapeHtml(status)}</span>
+          ${meta ? `<span class="subtask-node">${meta}</span>` : ''}
+        </div>
       </div>
     `;
   }).join('');
@@ -719,38 +753,71 @@ export function toggleTreeNode(el) {
 
 export function handleFileClick(path, type) {
   if (type === 'file') {
-    addFileReference(path);
+    // Append file path to prompt textarea
+    const promptEl = document.getElementById('prompt');
+    if (promptEl) {
+      const currentValue = promptEl.value;
+      const separator = currentValue && !currentValue.endsWith('\n') && !currentValue.endsWith(' ') ? ' ' : '';
+      promptEl.value = currentValue + separator + path;
+      promptEl.focus();
+    }
   }
 }
 
-export function openFileInVSCode(path) {
+export async function openFileInVSCode(path) {
   if (!state.selectedProject || !path) {
     return;
   }
   let workspacePath = state.selectedProject.workspace_path || '';
   let fullPath;
 
+  // Use dynamic config from backend (falls back to defaults if not loaded)
+  const projectRoot = state.appConfig.projectRoot || '';
+  const workspacesDir = state.appConfig.workspacesDir || `${projectRoot}/workspaces`;
+
   if (workspacePath.startsWith('[%root%]')) {
-    const basePath = '/mnt/c/dropbox/_coding/agentic/v2';
     const subPath = workspacePath.replace('[%root%]', '').replace(/^\//, '');
     if (subPath) {
-      fullPath = `${basePath}/${subPath}/${path}`.replace(/\/+/g, '/');
+      fullPath = `${projectRoot}/${subPath}/${path}`.replace(/\/+/g, '/');
     } else {
-      fullPath = `${basePath}/${path}`.replace(/\/+/g, '/');
+      fullPath = `${projectRoot}/${path}`.replace(/\/+/g, '/');
     }
   } else {
     workspacePath = workspacePath.replace(/^\.?\/?(workspaces\/)?/, '').replace(/\/+$/, '');
-    const basePath = '/mnt/c/dropbox/_coding/agentic/v2/workspaces';
-    fullPath = `${basePath}/${workspacePath}/${path}`.replace(/\/+/g, '/');
+    fullPath = `${workspacesDir}/${workspacePath}/${path}`.replace(/\/+/g, '/');
   }
 
+  // Convert WSL path to Windows path if needed
   if (fullPath.startsWith('/mnt/')) {
     const parts = fullPath.split('/');
     const drive = parts[2].toUpperCase();
     fullPath = `${drive}:/${parts.slice(3).join('/')}`;
   }
 
-  window.location.href = `vscode://file/${fullPath}`;
+  // Try file opener service first (runs on host, can open files in editor)
+  try {
+    const res = await fetch('http://localhost:8888/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: fullPath, line: 1 })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
+        addMessage('system', data.message);
+        return;
+      }
+    }
+  } catch (e) {
+    // File opener not running, fall back to clipboard
+  }
+
+  // Fallback: copy path to clipboard
+  navigator.clipboard.writeText(fullPath).then(() => {
+    addMessage('system', `Path copied: ${fullPath} (run: python scripts/file-opener.py to enable direct open)`);
+  }).catch(() => {
+    addMessage('system', `Path: ${fullPath}`);
+  });
 }
 
 // ============================================================================

@@ -7,11 +7,41 @@ from typing import Optional
 # Workspace path will be set when agent starts
 WORKSPACE: Optional[Path] = None
 
+# Task context for subtask delegation
+TASK_CONTEXT: Optional[dict] = None
+
 
 def set_workspace(path: str):
     """Set the workspace path for all tools."""
     global WORKSPACE
     WORKSPACE = Path(path)
+
+
+def set_task_context(task_id: int, depth: int = 0, parent_task_id: Optional[int] = None):
+    """Set task context for subtask delegation.
+
+    Args:
+        task_id: Current task ID
+        depth: Current delegation depth
+        parent_task_id: Parent task ID if this is a subtask
+    """
+    global TASK_CONTEXT
+    TASK_CONTEXT = {
+        "task_id": task_id,
+        "depth": depth,
+        "parent_task_id": parent_task_id,
+    }
+
+
+def get_task_context() -> Optional[dict]:
+    """Get current task context."""
+    return TASK_CONTEXT
+
+
+def clear_task_context():
+    """Clear task context."""
+    global TASK_CONTEXT
+    TASK_CONTEXT = None
 
 
 def list_files(path: str = ".") -> str:
@@ -181,13 +211,13 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "run_command",
-            "description": "Execute a shell command in the workspace directory.",
+            "description": "Run a shell command in the workspace directory.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "Shell command to execute",
+                        "description": "Shell command to run",
                     }
                 },
                 "required": ["command"],
@@ -219,8 +249,8 @@ TOOL_DEFINITIONS = [
 ]
 
 
-def execute_tool(name: str, arguments: dict) -> str:
-    """Execute a tool by name with given arguments."""
+def run_tool(name: str, arguments: dict) -> str:
+    """Run a tool by name with given arguments."""
     if name == "list_files":
         return list_files(arguments.get("path", "."))
     elif name == "read_file":

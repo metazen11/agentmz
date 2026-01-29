@@ -60,6 +60,7 @@ import {
 
 import {
   initSidebarElements,
+  fetchAppConfig,
   flattenTasks,
   findTaskById,
   populateParentTaskOptions,
@@ -173,6 +174,9 @@ async function init() {
   initSidebarElements();
   initAgentElements();
   initTerminalElements();
+
+  // Fetch app config (project root, workspaces dir, etc.)
+  await fetchAppConfig();
 
   // Setup event listeners
   setupAgentEventListeners();

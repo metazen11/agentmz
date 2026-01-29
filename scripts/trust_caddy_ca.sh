@@ -19,7 +19,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! docker cp "${CONTAINER_NAME}:${CERT_PATH}" "${CERT_FILE}" 2>/dev/null; then
+if ! docker exec "${CONTAINER_NAME}" cat "${CERT_PATH}" > "${CERT_FILE}" 2>/dev/null; then
   echo "ERROR: Could not copy Caddy root certificate from container."
   echo "Make sure Caddy has started and generated local certs."
   exit 1

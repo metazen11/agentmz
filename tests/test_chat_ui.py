@@ -230,7 +230,7 @@ class TestChatUI:
         selected_model = _pick_test_model(models, original_agent_model)
 
         file_name = "playwright_model_hello.txt"
-        workspace_path = "/mnt/c/dropbox/_coding/agentic/v2/workspaces/poc"
+        workspace_path = "/mnt/c/dropbox/_coding/agentmz/workspaces/poc"
         target_file = os.path.join(workspace_path, file_name)
 
         if os.path.exists(target_file):

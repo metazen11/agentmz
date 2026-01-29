@@ -103,8 +103,6 @@ class Config:
         workspaces_env = os.environ.get("WORKSPACES_DIR", "")
         if workspaces_env and os.path.isabs(workspaces_env):
             self.workspaces_dir = workspaces_env
-        elif os.path.isdir("/v2/workspaces"):
-            self.workspaces_dir = "/v2/workspaces"
         elif os.path.isdir("/workspaces"):
             self.workspaces_dir = "/workspaces"
         else:
@@ -157,6 +155,10 @@ class Config:
         cleaned = str(workspace).replace("\\", "/").strip()
         if cleaned.startswith("[%root%]"):
             return cleaned
+        if cleaned.startswith("/workspaces/"):
+            cleaned = cleaned[len("/workspaces/"):]
+        if cleaned.startswith("workspaces/"):
+            cleaned = cleaned[len("workspaces/"):]
         marker = "/workspaces/"
         lowered = cleaned.lower()
         idx = lowered.rfind(marker)
@@ -202,8 +204,10 @@ class Config:
 
         # Handle [%root%] variable for self-editing
         if normalized.startswith("[%root%]"):
-            # Get PROJECT_ROOT from env, fallback to parent of scripts dir
-            root = os.environ.get("PROJECT_ROOT", str(Path(__file__).parent.parent))
+            # Get PROJECT_ROOT from env, fallback to /app or parent of scripts dir
+            root = os.environ.get("PROJECT_ROOT")
+            if not root:
+                root = "/app" if os.path.isdir("/app") else str(Path(__file__).parent.parent)
             return normalized.replace("[%root%]", root)
 
         if not normalized:
@@ -331,11 +335,50 @@ TOOL_DEFINITIONS = [
                 "required": ["status", "summary"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_subtask",
+            "description": "Delegate a subtask to another agent. Use when a task is complex and can be broken into independent parts. The subtask runs in the same workspace and returns its result.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Brief title for the subtask"},
+                    "description": {"type": "string", "description": "Detailed description of what the subtask should accomplish"},
+                    "wait": {"type": "boolean", "description": "Whether to wait for subtask completion (default: true)"},
+                },
+                "required": ["title", "description"]
+            }
+        }
     }
 ]
 
 
 class AiderAPIHandler(BaseHTTPRequestHandler):
+    def _log_system_prompt_override(self, prompt: str) -> None:
+        if not prompt:
+            return
+        debug_enabled = os.environ.get("DEBUG", "").strip() == "1"
+        logging_level = os.environ.get("LOGGING", "").strip().lower()
+        if not (debug_enabled and logging_level == "verbose"):
+            return
+        raw_max = os.environ.get("SYSTEM_PROMPT_LOG_MAX", "4000")
+        try:
+            max_len = int(raw_max)
+        except ValueError:
+            max_len = 4000
+        max_len = max(0, max_len)
+        truncated = max_len > 0 and len(prompt) > max_len
+        preview = prompt if max_len == 0 or not truncated else prompt[:max_len] + "\n...[truncated]"
+
+        print(f"[AGENT] System prompt override length: {len(prompt)}")
+        print("[AGENT] System prompt override (begin)")
+        print(preview)
+        if truncated:
+            print("[AGENT] System prompt override (truncated)")
+        print("[AGENT] System prompt override (end)")
+
     def _normalize_path(self, workspace_path: str, path: str) -> str:
         """Normalize tool paths to stay relative to the workspace root."""
         if not path:
@@ -643,6 +686,7 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": "ping"}],
+            "tools": TOOL_DEFINITIONS,
             "stream": False,
         }
         data = json.dumps(payload).encode("utf-8")
@@ -664,7 +708,12 @@ class AiderAPIHandler(BaseHTTPRequestHandler):
                 return {"success": True, "loaded_model": loaded_model or model}
             return {"success": False, "error": "Ollama warmup failed - no response message"}
         except urllib.error.HTTPError as exc:
-            return {"success": False, "error": f"Ollama HTTP {exc.code}"}
+            error_detail = self._extract_ollama_http_error(exc)
+            return {
+                "success": False,
+                "error": error_detail or f"Ollama HTTP {exc.code}",
+                "status_code": exc.code,
+            }
         except Exception as exc:
             return {"success": False, "error": f"Ollama warmup error: {exc}"}
 
@@ -1125,6 +1174,7 @@ Available tools:
 - bash: Run shell commands
 - write: Create NEW files only (files that don't exist yet)
 - edit: Modify EXISTING files using AI diff editing (PREFERRED for changes)
+- delegate_subtask: Delegate a subtask to another agent (for complex multi-part tasks)
 - done: Signal task completion
 
 TOOL SELECTION (IMPORTANT):
@@ -1157,6 +1207,7 @@ If you need to perform actions, use the available tools:
 - bash: Run a shell command
 - edit: Modify existing code files
 - write: Create new files
+- delegate_subtask: Delegate a subtask to another agent
 """
 
     def _get_workspace_files(self, workspace_path: str, key_files: list | None = None) -> str:
@@ -1263,8 +1314,12 @@ If you need to perform actions, use the available tools:
 
         if system_prompt_override: # NEW: If override is provided, use it
             system_prompt = system_prompt_override
+            resolved_workspace = config.resolve_workspace_path(workspace)
+            if resolved_workspace and "Resolved workspace path:" not in system_prompt:
+                system_prompt += f"\nResolved workspace path: {resolved_workspace}"
             user_message = user_message_content # Raw user input
             print(f"[AGENT] Using system_prompt_override.")
+            self._log_system_prompt_override(system_prompt)
         elif chat_mode and not task_id: # If in chat_mode and no specific task is active
             # Use minimal system prompt for chat
             system_prompt = self._minimal_chat_system_prompt()
@@ -1314,6 +1369,9 @@ Workspace: {workspace}"""
             if not ollama_response:
                 result["error"] = "No response from Ollama"
                 break
+            if isinstance(ollama_response, dict) and ollama_response.get("error"):
+                result["error"] = ollama_response.get("error")
+                break
 
             response_message = ollama_response.get("message", {})
             content = response_message.get("content", "")
@@ -1352,7 +1410,7 @@ Workspace: {workspace}"""
                 print(f"[AGENT] Tool: {tool_name}({json.dumps(tool_args)[:100]})")
 
                 # Execute the tool
-                tool_output = self._execute_agent_tool(tool_name, tool_args, workspace)
+                tool_output = self._execute_agent_tool(tool_name, tool_args, workspace, task_id)
 
                 all_tool_calls.append({
                     "iteration": iteration,
@@ -1428,12 +1486,32 @@ Workspace: {workspace}"""
                 if result.get("model"):
                     print(f"[AGENT] Response from model: {result.get('model')}")
                 return result
+        except urllib.error.HTTPError as exc:
+            error_detail = self._extract_ollama_http_error(exc)
+            print(f"[AGENT] Ollama error: HTTP {exc.code} {error_detail or ''}".strip())
+            return {"error": error_detail or f"Ollama HTTP {exc.code}", "status_code": exc.code}
         except urllib.error.URLError as e:
             print(f"[AGENT] Ollama error: {e}")
-            return None
+            return {"error": f"Ollama error: {e}"}
         except Exception as e:
             print(f"[AGENT] Error: {e}")
-            return None
+            return {"error": f"Ollama error: {e}"}
+
+    def _extract_ollama_http_error(self, exc) -> str:
+        """Extract readable error message from Ollama HTTP errors."""
+        try:
+            raw = exc.read().decode("utf-8", errors="ignore").strip()
+        except Exception:
+            raw = ""
+        if not raw:
+            return ""
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data.get("error") or raw
+        except json.JSONDecodeError:
+            return raw
+        return raw
 
     def _parse_tool_calls_from_content(self, content: str) -> list:
         """Parse tool calls from content when model returns JSON instead of tool_calls."""
@@ -1546,7 +1624,7 @@ Workspace: {workspace}"""
 
         return tool_calls
 
-    def _execute_agent_tool(self, tool_name: str, args: dict, workspace: str) -> dict:
+    def _execute_agent_tool(self, tool_name: str, args: dict, workspace: str, task_id: int = None) -> dict:
         """Execute a tool and return the result."""
         args["workspace"] = workspace
 
@@ -1579,8 +1657,112 @@ Workspace: {workspace}"""
         elif tool_name == "done":
             # Done is handled in the main loop
             return {"status": args.get("status", "PASS"), "summary": args.get("summary", "")}
+        elif tool_name == "delegate_subtask":
+            return self._delegate_subtask(args, task_id)
         else:
             return {"success": False, "error": f"Unknown tool: {tool_name}"}
+
+    def _delegate_subtask(self, args: dict, parent_task_id: int) -> dict:
+        """Delegate a subtask to another agent via the main API.
+
+        Creates a subtask through POST /tasks/{parent_id}/subtasks and optionally
+        waits for it to complete.
+        """
+        import urllib.request
+        import urllib.error
+
+        if not parent_task_id:
+            return {"success": False, "error": "Cannot delegate: no parent task context"}
+
+        title = args.get("title", "").strip()
+        description = args.get("description", "").strip()
+        wait = args.get("wait", True)
+
+        if not title or not description:
+            return {"success": False, "error": "Both title and description are required"}
+
+        # Main API URL (container-to-container communication)
+        main_api_url = os.environ.get("MAIN_API_URL", "http://wfhub-v2-main-api:8002")
+
+        # Create subtask via API
+        subtask_payload = json.dumps({
+            "title": title,
+            "description": description,
+        }).encode("utf-8")
+
+        create_url = f"{main_api_url}/tasks/{parent_task_id}/subtasks"
+        print(f"[DELEGATE] Creating subtask: {title} (parent={parent_task_id})")
+
+        try:
+            req = urllib.request.Request(
+                create_url,
+                data=subtask_payload,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=30) as response:
+                subtask = json.loads(response.read().decode("utf-8"))
+                subtask_id = subtask.get("id")
+                print(f"[DELEGATE] Created subtask {subtask_id}: {title}")
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else str(e)
+            print(f"[DELEGATE] Failed to create subtask: {e.code} - {error_body}")
+            return {"success": False, "error": f"Failed to create subtask: {error_body}"}
+        except Exception as e:
+            print(f"[DELEGATE] Error creating subtask: {e}")
+            return {"success": False, "error": f"Error creating subtask: {str(e)}"}
+
+        if not wait:
+            return {
+                "success": True,
+                "subtask_id": subtask_id,
+                "status": "created",
+                "message": f"Subtask '{title}' created (id={subtask_id}), running in background"
+            }
+
+        # Poll for completion
+        poll_url = f"{main_api_url}/tasks/{subtask_id}"
+        max_wait = 300  # 5 minutes
+        poll_interval = 5  # seconds
+        elapsed = 0
+
+        print(f"[DELEGATE] Waiting for subtask {subtask_id} to complete...")
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+            try:
+                req = urllib.request.Request(poll_url)
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    task_status = json.loads(response.read().decode("utf-8"))
+                    status = task_status.get("status")
+
+                    if status in ("completed", "failed"):
+                        print(f"[DELEGATE] Subtask {subtask_id} finished with status: {status}")
+
+                        # Get the task run result if available
+                        result_summary = task_status.get("result", {}).get("summary", "")
+                        return {
+                            "success": status == "completed",
+                            "subtask_id": subtask_id,
+                            "status": status,
+                            "title": title,
+                            "result": result_summary or f"Subtask {status}",
+                        }
+
+                    print(f"[DELEGATE] Subtask {subtask_id} status: {status} (waited {elapsed}s)")
+
+            except Exception as e:
+                print(f"[DELEGATE] Error polling subtask: {e}")
+                # Continue polling on transient errors
+
+        # Timeout
+        return {
+            "success": False,
+            "subtask_id": subtask_id,
+            "status": "timeout",
+            "error": f"Subtask did not complete within {max_wait}s"
+        }
 
     def log_message(self, format, *args):
         # Skip logging health checks to reduce noise

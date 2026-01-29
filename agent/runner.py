@@ -1,4 +1,4 @@
-"""Agent runner with Ollama native tool calling."""
+"""Agent runner with Ollama native tool calling and LangGraph orchestration."""
 import json
 import os
 from datetime import datetime
@@ -7,13 +7,14 @@ from typing import Optional
 
 import httpx
 
-from .tools import TOOL_DEFINITIONS, execute_tool, set_workspace
+from .tools import TOOL_DEFINITIONS, run_tool, set_workspace, set_task_context, clear_task_context
+from .constants import MAX_ITERATIONS
 
 # Configuration
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 MODEL = os.getenv("AGENT_MODEL", "qwen2.5-coder:7b")  # or phi4, llama3.2:3b
-MAX_ITERATIONS = 20
 TIMEOUT = int(os.getenv("AGENT_TIMEOUT", "120"))
+USE_LANGGRAPH = os.getenv("USE_LANGGRAPH", "false").lower() == "true"
 
 
 def parse_tool_calls_from_content(content: str) -> list:
@@ -73,6 +74,8 @@ def run_agent(
     task_description: str,
     task_id: int,
     node_name: str = "dev",
+    depth: int = 0,
+    parent_task_id: Optional[int] = None,
 ) -> dict:
     """Run the agent to complete a task.
 
@@ -82,11 +85,28 @@ def run_agent(
         task_description: Description of what to do
         task_id: Database ID of the task
         node_name: Current pipeline node (pm, dev, qa, security, documentation)
+        depth: Current delegation depth (0 = root task)
+        parent_task_id: ID of parent task if this is a subtask
 
     Returns:
         dict with status (PASS/FAIL), summary, and details
     """
+    # Use LangGraph runner if enabled
+    if USE_LANGGRAPH:
+        from .graph import run_agent_graph
+        return run_agent_graph(
+            workspace_path=workspace_path,
+            task_title=task_title,
+            task_description=task_description,
+            task_id=task_id,
+            node_name=node_name,
+            depth=depth,
+            parent_task_id=parent_task_id,
+        )
+
+    # Legacy runner (without LangGraph)
     set_workspace(workspace_path)
+    set_task_context(task_id, depth, parent_task_id)
     pipeline_dir = Path(workspace_path) / ".pipeline"
     pipeline_dir.mkdir(parents=True, exist_ok=True)
 
@@ -163,7 +183,7 @@ Start by listing the files in the workspace."""
             print(f"Tool: {tool_name}({json.dumps(tool_args)[:100]})")
 
             # Execute the tool
-            tool_output = execute_tool(tool_name, tool_args)
+            tool_output = run_tool(tool_name, tool_args)
             all_tool_calls.append({
                 "tool": tool_name,
                 "args": tool_args,
@@ -179,6 +199,7 @@ Start by listing the files in the workspace."""
 
                 # Write result.json
                 write_result(pipeline_dir, result, task_id)
+                clear_task_context()
                 return result
 
             tool_results.append({
@@ -199,6 +220,7 @@ Start by listing the files in the workspace."""
     # Agent didn't call done() - write failure result
     result["details"] = json.dumps(all_tool_calls, indent=2)
     write_result(pipeline_dir, result, task_id)
+    clear_task_context()
     return result
 
 

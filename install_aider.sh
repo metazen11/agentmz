@@ -2,6 +2,10 @@
 #
 # install_aider.sh - Install aider-chat and register the agent command
 #
+# NOTE: This script is now integrated into install.sh
+#       You can use: ./install.sh --aider --agent  (or --all)
+#       This standalone script is kept for backward compatibility.
+#
 # This script uses the official aider installer which:
 #   1. Installs Python 3.12 if needed (via uv)
 #   2. Installs aider-chat

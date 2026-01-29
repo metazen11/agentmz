@@ -1133,3 +1133,132 @@ Implemented provider-agnostic external task import system:
 
 ### Tests
 - Not run (script changes)
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Made startup scripts show Alembic output while avoiding false failure on stderr
+- [x] Kept migrations non-blocking so browser open still runs
+
+### Notes
+- `start.ps1` now captures Alembic output without triggering `NativeCommandError` and prints it if present.
+- `start.sh` now prints Alembic output (including warnings) instead of suppressing it.
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Aider API now surfaces Ollama HTTP error bodies instead of "No response"
+- [x] Model switch warmup now includes tool definitions to reject models that can't use tools
+- [x] Added test for model switch failures (skips when unsupported/available)
+
+### Tests
+- `ruff check .` (failed: ruff not installed)
+- `python -m pytest tests/ -v` (failed: many tests could not resolve `wfhub.localhost` / https endpoints)
+
+### Notes
+- Full pytest run failed with `getaddrinfo failed` for `wfhub.localhost` (HTTPS) in multiple API/UI tests.
+- Aider API model switch now returns specific Ollama error when tools are unsupported or when warmup times out.
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Log full system prompt override in Aider API with truncation control via SYSTEM_PROMPT_LOG_MAX
+
+### Notes
+- Set SYSTEM_PROMPT_LOG_MAX=0 to log the full prompt without truncation.
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Set SYSTEM_PROMPT_LOG_MAX=0 in .env to log full system prompt overrides
+- [x] Restarted wfhub-v2-aider-api to apply logging config
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Gate system prompt override logging behind DEBUG=1 and LOGGING=verbose
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Added DEBUG/LOGGING controls to .env with comments for prompt logging gating
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Updated chat-mode system prompt to require tool usage for filesystem questions and avoid /think confusion
+- [x] Verified /api/agent/chat now calls glob for cwd listing
+
+### Verification
+- POST /api/agent/chat with "what files do you see in you cwd" returned tool_calls with glob pattern "*".
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Moved resolved [%root%] path injection to aider-api so it reflects tool runtime (/v2)
+- [x] Updated system prompt override logging to show final prompt used
+
+### Verification
+- Aider logs now show: "Resolved workspace path: /v2" for chat-mode with [%root%].
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Added chat UI toggle to route chat requests via Aider CLI
+- [x] Added API support for use_aider_cli in /api/agent/chat
+- [x] Added test for chat-mode Aider CLI toggle
+
+### Tests
+- `python -m pytest tests/test_chat_interface.py -k "chat_mode_aider_cli_toggle" -v` (failed: MAIN_API_URL resolves to https://wfhub.localhost; DNS error)
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Defaulted chat to Aider CLI mode when no cookie is set
+
+### Verification
+- Aider container env: PROJECT_ROOT=/v2
+- Workspace mount visible under /v2/workspaces
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Switched container mounts to /app (project root) and /workspaces
+- [x] Updated aider-api defaults to use /workspaces and /app fallback
+- [x] Updated host PROJECT_ROOT in .env for Windows path
+
+### Verification
+- aider-api container env: PROJECT_ROOT=/app, WORKSPACES_DIR=/workspaces
+- working_dir: /workspaces
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Normalized workspace inputs so /workspaces/<name> and workspaces/<name> map to <name>
+
+### Verification
+- /api/config workspace accepts /workspaces/poc, workspaces/poc, poc, and [%root%].

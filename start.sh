@@ -222,6 +222,30 @@ echo ""
 echo "v2 Ollama models:"
 curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" | python3 -c "import json,sys; data=json.load(sys.stdin); [print(f'  - {m[\"name\"]}') for m in data.get('models',[])]" 2>/dev/null || echo "  (none yet)"
 
+# === Run Database Migrations ===
+echo ""
+echo "--- Database Migrations ---"
+echo -n "Running Alembic migrations... "
+set +e
+migration_output=$(docker exec wfhub-v2-main-api alembic upgrade head 2>&1)
+migration_exit=$?
+set -e
+
+if [ $migration_exit -eq 0 ]; then
+    echo "done"
+else
+    echo "failed (checking status...)"
+fi
+
+if [ -n "$migration_output" ]; then
+    echo "Migration output:"
+    echo "$migration_output" | sed 's/^/  /'
+fi
+
+if [ $migration_exit -ne 0 ]; then
+    docker exec wfhub-v2-main-api alembic current 2>&1 | head -5
+fi
+
 # === Wait for Aider API ===
 echo ""
 echo "--- Aider API ---"
@@ -299,6 +323,37 @@ if [ -n "${AGENTMZ_DIR:-}" ] && command -v aider &> /dev/null; then
     echo "agent: already configured (AGENTMZ_DIR=$AGENTMZ_DIR)"
 elif [ -f "$SCRIPT_DIR/agent_alias_install.sh" ]; then
     ("$SCRIPT_DIR/agent_alias_install.sh") || echo "  (agent setup skipped - run ./agent_alias_install.sh manually)"
+fi
+
+# === Check for VS Code ===
+if ! command -v code &> /dev/null; then
+    echo ""
+    echo "--- VS Code Not Found ---"
+    if grep -qi microsoft /proc/version 2>/dev/null; then
+        echo "WSL detected - install VS Code on Windows:"
+        echo "  winget install Microsoft.VisualStudioCode"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "Install VS Code on macOS:"
+        echo "  brew install --cask visual-studio-code"
+    else
+        echo "Install VS Code on Linux:"
+        echo "  sudo snap install code --classic"
+    fi
+fi
+
+# === Start File Opener Service (for opening files in editor) ===
+echo ""
+echo "--- File Opener ---"
+FILE_OPENER_PID=$(lsof -ti:8888 2>/dev/null)
+if [ -n "$FILE_OPENER_PID" ]; then
+    echo "file-opener: already running (pid $FILE_OPENER_PID)"
+else
+    if [ -f "$SCRIPT_DIR/scripts/file-opener.py" ]; then
+        nohup python3 "$SCRIPT_DIR/scripts/file-opener.py" > /tmp/file-opener.log 2>&1 &
+        echo "file-opener: started on http://localhost:8888"
+    else
+        echo "file-opener: script not found (clicking files will copy path instead)"
+    fi
 fi
 
 echo ""

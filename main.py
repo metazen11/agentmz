@@ -62,6 +62,12 @@ app.include_router(logs.router, tags=["logs"])
 app.include_router(help_agents.router, tags=["help"])
 app.include_router(terminal.router, tags=["terminal"])
 
+@app.get("/health")
+def health():
+    """Simple health check."""
+    return {"status": "ok", "service": "main-api"}
+
+
 @app.get("/health/full")
 async def health_full():
     """Full health check including all services."""
@@ -102,6 +108,27 @@ async def health_full():
         "version": "2.0.0",
         "aider_api": aider_status,
         "ollama": ollama_status,
+    }
+
+
+@app.get("/config")
+def get_config():
+    """Return application configuration for frontend."""
+    # HOST_PROJECT_ROOT is the host machine path (for VS Code URLs in browser)
+    # PROJECT_ROOT is /app inside container
+    host_root = os.getenv("HOST_PROJECT_ROOT", os.getenv("PROJECT_ROOT", ""))
+    workspaces_dir = os.getenv("WORKSPACES_DIR", "workspaces")
+
+    # Build workspaces path using host path
+    if host_root:
+        workspaces_path = f"{host_root}/{workspaces_dir}".replace("//", "/")
+    else:
+        workspaces_path = workspaces_dir
+
+    return {
+        "project_root": host_root,
+        "workspaces_dir": workspaces_path,
+        "default_workspace": os.getenv("DEFAULT_WORKSPACE", "poc"),
     }
 
 

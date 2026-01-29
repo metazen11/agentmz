@@ -40,6 +40,7 @@ class Task(Base):
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(20), default="backlog")  # backlog | in_progress | done | failed
+    depth = Column(Integer, default=0, nullable=False)  # Delegation depth (0 = root task)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -66,6 +67,7 @@ class Task(Base):
             "title": self.title,
             "description": self.description,
             "status": self.status,
+            "depth": self.depth,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if include_children:

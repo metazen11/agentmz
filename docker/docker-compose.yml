@@ -75,7 +75,8 @@ services:
       - POSTGRES_PORT=5432
       - AIDER_API_URL=http://wfhub-v2-aider-api:8001
       - OLLAMA_PROXY_TARGET=http://wfhub-v2-ollama:11434
-      - PROJECT_ROOT=/app  # For [%root%] path variable
+      - PROJECT_ROOT=/app  # For [%root%] path variable (container path)
+      - HOST_PROJECT_ROOT=${PROJECT_ROOT}  # Host path for VS Code URLs
     ports:
       - "8002:8002"
     volumes:
@@ -100,9 +101,9 @@ services:
       - OLLAMA_API_BASE=http://wfhub-v2-main-api:8002/ollama
       - PYTHONHTTPSVERIFY=0
       - PORT=${AIDER_API_PORT}
-      - WORKSPACES_DIR=/v2/workspaces
+      - WORKSPACES_DIR=/workspaces
       - DATABASE_URL=postgresql://wfhub:${POSTGRES_PASSWORD}@wfhub-v2-db:5432/agentic
-      - PROJECT_ROOT=/v2  # For [%root%] path variable
+      - PROJECT_ROOT=/app  # For [%root%] path variable
       - PYTHONUNBUFFERED=1
     extra_hosts:
       - "wfhub.localhost:172.17.0.1"
@@ -110,9 +111,9 @@ services:
       - "${AIDER_API_PORT}:${AIDER_API_PORT}"
     volumes:
       - ../workspaces:/workspaces
-      - ..:/v2  # Mount v2 root - code changes reflect immediately
-    working_dir: /v2/workspaces
-    entrypoint: ["python", "/v2/scripts/aider_api.py"]  # Run from mount, not copied /app
+      - ..:/app  # Mount project root - code changes reflect immediately
+    working_dir: /workspaces
+    entrypoint: ["python", "/app/scripts/aider_api.py"]  # Run from mount, not copied /app
     depends_on:
       ollama:
         condition: service_healthy

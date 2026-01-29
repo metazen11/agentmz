@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from database import get_db
-from models import Project, Task, TaskAcceptanceCriteria, TaskNode, TaskExternalLink
+from models import Project, Task, TaskAcceptanceCriteria, TaskNode, TaskExternalLink, TaskRun
 from core.context import build_task_context_payload, build_task_context_summary
 from routers.nodes import get_node_or_404, get_default_node
 from routers.acceptance_criteria import AcceptanceCriteriaCreate
@@ -22,6 +22,13 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
     acceptance_criteria: Optional[List[AcceptanceCriteriaCreate]] = None
+
+
+class SubtaskCreate(BaseModel):
+    """Schema for creating a subtask via agent delegation."""
+    title: str
+    description: Optional[str] = None
+    node_id: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -40,6 +47,7 @@ class TaskResponse(BaseModel):
     title: str
     description: Optional[str]
     status: str
+    depth: int = 0
     created_at: Optional[datetime]
     children: List["TaskResponse"] = []
 
@@ -376,8 +384,6 @@ async def trigger_task(task_id: int, db: Session = Depends(get_db)):
     """Manually trigger the agent for a task using the agent loop."""
     import httpx
     from pathlib import Path
-    from models import TaskRun, TaskNode
-    from datetime import datetime
 
     AIDER_API_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-aider-api:8001")
 
@@ -470,6 +476,185 @@ async def trigger_task(task_id: int, db: Session = Depends(get_db)):
         run.finished_at = datetime.utcnow()
         db.commit()
         return {"triggered": False, "task_id": task_id, "error": str(e)}
+
+
+@router.post("/tasks/{task_id}/subtasks", response_model=TaskResponse)
+async def create_subtask(
+    task_id: int,
+    subtask: SubtaskCreate,
+    trigger: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Create a subtask via agent delegation.
+
+    This endpoint is called by agents to delegate work to child agents.
+    It enforces:
+    - Maximum delegation depth (3 levels)
+    - Maximum subtasks per parent (10)
+    - Creates TaskRun for audit trail
+    - Optionally triggers background execution (trigger=True by default)
+
+    Query Parameters:
+        trigger: If True (default), immediately start agent execution in background.
+                 If False, just create the subtask without triggering execution.
+    """
+    from agent.constants import MAX_DELEGATION_DEPTH, MAX_SUBTASKS_PER_TASK
+
+    parent_task = get_task_or_404(task_id, db)
+
+    # Check depth limit
+    new_depth = parent_task.depth + 1
+    if new_depth > MAX_DELEGATION_DEPTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum delegation depth ({MAX_DELEGATION_DEPTH}) exceeded"
+        )
+
+    # Check subtask count limit
+    existing_subtask_count = db.query(Task).filter(Task.parent_id == task_id).count()
+    if existing_subtask_count >= MAX_SUBTASKS_PER_TASK:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum subtasks per task ({MAX_SUBTASKS_PER_TASK}) exceeded"
+        )
+
+    # Use parent's node if not specified
+    node_id = subtask.node_id or parent_task.node_id
+
+    # Create the subtask
+    db_subtask = Task(
+        project_id=parent_task.project_id,
+        parent_id=task_id,
+        node_id=node_id,
+        title=subtask.title,
+        description=subtask.description,
+        status="in_progress",
+        depth=new_depth,
+    )
+    db.add(db_subtask)
+    db.flush()
+
+    # Create a default acceptance criteria for the subtask
+    db.add(TaskAcceptanceCriteria(
+        task_id=db_subtask.id,
+        description=f"Complete: {subtask.title}",
+        passed=False,
+        author="system",
+    ))
+
+    # Create TaskRun record for audit
+    run = TaskRun(
+        task_id=db_subtask.id,
+        node_id=node_id,
+        status="started",
+    )
+    db.add(run)
+
+    db.commit()
+    db.refresh(db_subtask)
+
+    # Trigger background execution if requested
+    if trigger:
+        import asyncio
+        asyncio.create_task(_execute_subtask_background(db_subtask.id, run.id))
+
+    return db_subtask
+
+
+async def _execute_subtask_background(subtask_id: int, run_id: int):
+    """Execute a subtask in the background.
+
+    This function runs the agent for the subtask and updates status.
+    """
+    import httpx
+    from database import SessionLocal
+
+    AIDER_API_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-aider-api:8001")
+
+    db = SessionLocal()
+    try:
+        subtask = db.query(Task).filter(Task.id == subtask_id).first()
+        if not subtask:
+            return
+
+        run = db.query(TaskRun).filter(TaskRun.id == run_id).first()
+        if not run:
+            return
+
+        project = db.query(Project).filter(Project.id == subtask.project_id).first()
+        if not project:
+            return
+
+        node = db.query(TaskNode).filter(TaskNode.id == subtask.node_id).first()
+        node_name = node.name if node else "dev"
+        node_prompt = node.agent_prompt if node else None
+
+        # Build task prompt
+        prompt_parts = []
+        if node_prompt:
+            prompt_parts.append(f"ROLE: {node_prompt}")
+        prompt_parts.append(f"TASK: {subtask.title}")
+        if subtask.description:
+            prompt_parts.append(f"\nDESCRIPTION:\n{subtask.description}")
+        prompt_parts.append("\n\nComplete this task.")
+
+        full_prompt = "\n".join(prompt_parts)
+
+        # Handle workspace path
+        workspace_path = project.workspace_path
+        if workspace_path.startswith("[%root%]"):
+            workspace_name = workspace_path
+        else:
+            from pathlib import Path
+            workspace_name = Path(workspace_path).name
+
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                response = await client.post(
+                    f"{AIDER_API_URL}/api/agent/run",
+                    json={
+                        "task": full_prompt,
+                        "workspace": workspace_name,
+                        "project_id": project.id,
+                        "task_id": subtask.id,
+                        "max_iterations": 20,
+                        "depth": subtask.depth,
+                        "parent_task_id": subtask.parent_id,
+                    }
+                )
+                result = response.json()
+
+            success = result.get("success") or result.get("status") == "PASS"
+
+            if success:
+                subtask.status = "done"
+                run.status = "completed"
+            else:
+                subtask.status = "failed"
+                run.status = "failed"
+                run.error = result.get("error") or result.get("summary")
+
+            run.summary = result.get("summary")
+            run.tool_calls = result.get("tool_calls")
+            run.finished_at = datetime.utcnow()
+
+        except Exception as e:
+            subtask.status = "failed"
+            run.status = "failed"
+            run.error = str(e)
+            run.finished_at = datetime.utcnow()
+
+        db.commit()
+
+    finally:
+        db.close()
+
+
+@router.get("/tasks/{task_id}/subtasks", response_model=List[TaskResponse])
+def list_subtasks(task_id: int, db: Session = Depends(get_db)):
+    """List all subtasks of a task."""
+    get_task_or_404(task_id, db)
+    return db.query(Task).filter(Task.parent_id == task_id).all()
 
 
 @router.get("/tasks/{task_id}/external-links", response_model=List[TaskExternalLinkResponse])

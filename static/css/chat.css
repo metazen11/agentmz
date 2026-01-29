@@ -4,7 +4,6 @@
   margin: 10px 0;
   padding: 12px;
   border-radius: 6px;
-  white-space: pre-wrap;
   font-family: 'SF Mono', Monaco, monospace;
   font-size: 13px;
 }
@@ -239,3 +238,44 @@
 .tool-json .number { color: #fde047; }
 .tool-json .boolean { color: #c4b5fd; }
 .tool-json .null { color: #888; }
+
+/* Message header with timestamp and label */
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 11px;
+}
+.message-timestamp {
+  color: #666;
+}
+.message-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.message.user .message-label { color: #7dd3fc; }
+.message.assistant .message-label { color: #86efac; }
+.message.system .message-label { color: #c4b5fd; }
+.message.error .message-label { color: #fca5a5; }
+
+.message-body {
+  /* Inherits from parent */
+}
+
+/* User prompt display */
+.message-prompt {
+  margin: 0;
+  padding: 8px 12px;
+  background: #1a1a1a;
+  border-radius: 4px;
+  border-left: 3px solid #7dd3fc;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e5e7eb;
+}

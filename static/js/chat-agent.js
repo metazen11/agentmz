@@ -1,8 +1,8 @@
 // chat-agent.js - Agent execution, task runs, prompt building
 
 import { MAIN_API } from './config.js';
-import { COOKIE_KEYS, setCookie, deleteCookie, getWorkspaceName } from './cookies.js';
-import { state, setVisionModel } from './state.js';
+import { COOKIE_KEYS, setCookie, deleteCookie, getCookie, getWorkspaceName } from './cookies.js';
+import { state, setVisionModel, setUseAiderCli } from './state.js';
 import {
   addMessage,
   buildVisionImageLayer,
@@ -25,7 +25,7 @@ import {
 } from './chat-sidebar.js';
 
 // Module-local DOM refs
-let promptEl, sendBtn, statusEl, taskRunPreviewEl, visionModelSelectEl;
+let promptEl, sendBtn, statusEl, taskRunPreviewEl, visionModelSelectEl, aiderCliToggleEl;
 
 // ============================================================================
 // Init
@@ -37,6 +37,7 @@ export function initAgentElements() {
   statusEl = document.getElementById('status');
   taskRunPreviewEl = document.getElementById('task-run-preview');
   visionModelSelectEl = document.getElementById('vision-model-select');
+  aiderCliToggleEl = document.getElementById('aider-cli-toggle');
 }
 
 // ============================================================================
@@ -195,6 +196,40 @@ export async function postAgentComment(taskId, nodeLabel, runSummary = '', reque
 // Agent Request
 // ============================================================================
 
+// Animated status for long-running tasks
+let statusAnimationInterval = null;
+function startWorkingAnimation() {
+  const frames = ['Agent is working', 'Agent is working.', 'Agent is working..', 'Agent is working...'];
+  let frameIndex = 0;
+  stopWorkingAnimation();
+  statusAnimationInterval = setInterval(() => {
+    setStatus(frames[frameIndex % frames.length], 'status connected');
+    frameIndex++;
+  }, 500);
+}
+
+function stopWorkingAnimation() {
+  if (statusAnimationInterval) {
+    clearInterval(statusAnimationInterval);
+    statusAnimationInterval = null;
+  }
+}
+
+// Check if agent is still active by pinging logs
+async function isAgentStillWorking() {
+  try {
+    const res = await fetch(`${MAIN_API}/api/logs/aider?tail=5`, { timeout: 2000 });
+    if (res.ok) {
+      const data = await res.json();
+      // If there are recent log entries (within last 30s), agent is likely working
+      return data.lines && data.lines.length > 0;
+    }
+  } catch {
+    // Ignore - just assume not working
+  }
+  return false;
+}
+
 export async function runAgentRequest(requestText, task = null, imageLayer = '', options = {}) {
   const workspace = state.selectedProject
     ? getWorkspaceName(state.selectedProject.workspace_path)
@@ -206,12 +241,16 @@ export async function runAgentRequest(requestText, task = null, imageLayer = '',
     runId = run?.id || null;
   }
 
-  setStatus('Agent is working...', 'status connected');
+  startWorkingAnimation();
 
   try {
     const concise = options.concise === true;
     const fullPrompt = options.promptOverride
       || await buildPromptForRequest(task?.id, requestText, imageLayer, concise);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+
     const res = await fetch(`${MAIN_API}/api/agent/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -219,9 +258,13 @@ export async function runAgentRequest(requestText, task = null, imageLayer = '',
         prompt: fullPrompt,
         workspace,
         project_id: state.selectedProject?.id,
-        chat_mode: options.chat_mode || false
-      })
+        chat_mode: options.chat_mode || false,
+        use_aider_cli: state.useAiderCli === true
+      }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     const data = await res.json();
     console.log('Agent response:', data);
@@ -229,6 +272,7 @@ export async function runAgentRequest(requestText, task = null, imageLayer = '',
     // Consider response OK if: explicit success, PASS status, or has a summary (chat responses)
     const ok = data.success || data.status === 'PASS' || (data.summary && !data.error);
     if (ok) {
+      stopWorkingAnimation();
       const responseText = data.summary || 'Task completed';
       addMessage('assistant', responseText, data.tool_calls);
       setStatus('Ready', 'status connected');
@@ -247,12 +291,14 @@ export async function runAgentRequest(requestText, task = null, imageLayer = '',
       }
       return { ok: true, data };
     } else {
-      addMessage('error', `Error: ${data.error || data.summary || 'Unknown error'}`);
+      stopWorkingAnimation();
+      const errorMsg = data.error || data.summary || 'Request failed - check logs for details';
+      addMessage('error', `Error: ${errorMsg}`);
       setStatus('Error - see output', 'status error');
       if (task?.id && runId) {
         await updateTaskRun(task.id, runId, {
           status: 'fail',
-          error: data.error || data.summary || 'Unknown error',
+          error: errorMsg,
           tool_calls: data.tool_calls || null,
           finished_at: new Date().toISOString()
         });
@@ -260,13 +306,38 @@ export async function runAgentRequest(requestText, task = null, imageLayer = '',
     }
     return { ok: false, data };
   } catch (err) {
+    stopWorkingAnimation();
     console.error('Fetch error:', err);
-    addMessage('error', 'Connection error: ' + err.message);
-    setStatus('Connection failed', 'status error');
+
+    // Handle different error types
+    let errorMsg;
+    let statusMsg;
+
+    if (err.name === 'AbortError') {
+      // Timeout - check if agent is still working
+      const stillWorking = await isAgentStillWorking();
+      if (stillWorking) {
+        errorMsg = 'Request is taking longer than expected. The agent is still working - check the logs panel for progress.';
+        statusMsg = 'Still working - check logs';
+      } else {
+        errorMsg = 'Request timed out. The agent may have encountered an issue - check the logs for details.';
+        statusMsg = 'Timeout - check logs';
+      }
+    } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+      errorMsg = 'Connection lost. Check if the server is running.';
+      statusMsg = 'Connection lost';
+    } else {
+      errorMsg = err.message || 'An unexpected error occurred';
+      statusMsg = 'Error - see output';
+    }
+
+    addMessage('error', errorMsg);
+    setStatus(statusMsg, 'status error');
+
     if (task?.id && runId) {
       await updateTaskRun(task.id, runId, {
         status: 'fail',
-        error: err.message,
+        error: errorMsg,
         finished_at: new Date().toISOString()
       });
     }
@@ -417,6 +488,24 @@ export function setupAgentEventListeners() {
         setCookie(COOKIE_KEYS.VISION_MODEL, selected);
       } else {
         deleteCookie(COOKIE_KEYS.VISION_MODEL);
+      }
+    });
+  }
+  if (aiderCliToggleEl) {
+    const saved = getCookie(COOKIE_KEYS.AIDER_CLI);
+    const enabled = saved === null ? true : saved === '1';
+    aiderCliToggleEl.checked = enabled;
+    setUseAiderCli(enabled);
+    if (saved === null && enabled) {
+      setCookie(COOKIE_KEYS.AIDER_CLI, '1');
+    }
+    aiderCliToggleEl.addEventListener('change', () => {
+      const isEnabled = aiderCliToggleEl.checked;
+      setUseAiderCli(isEnabled);
+      if (isEnabled) {
+        setCookie(COOKIE_KEYS.AIDER_CLI, '1');
+      } else {
+        deleteCookie(COOKIE_KEYS.AIDER_CLI);
       }
     });
   }

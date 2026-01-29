@@ -32,6 +32,24 @@ if ($Help) {
 Write-Host "=== v2 Coding Agent Stack ===" -ForegroundColor Cyan
 Write-Host ""
 
+# === Check Prerequisites ===
+# Python (needed for file opener service)
+$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+if (-not $pythonCmd) {
+    Write-Host "Python not found in PATH." -ForegroundColor Yellow
+    Write-Host "Install Python for file-opener service:"
+    Write-Host "  winget install 9NQ7512CXL7T" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+# VS Code (for file opening)
+$codeCmd = Get-Command code -ErrorAction SilentlyContinue
+if (-not $codeCmd) {
+    Write-Host "VS Code not found. Install with:" -ForegroundColor Yellow
+    Write-Host "  winget install Microsoft.VisualStudioCode" -ForegroundColor Cyan
+    Write-Host ""
+}
+
 # Load environment from .env file
 $EnvFile = Join-Path $ScriptDir ".env"
 if (Test-Path $EnvFile) {
@@ -200,6 +218,51 @@ try {
     Write-Host "  (none yet)"
 }
 
+# === Wait for Main API ===
+$FastApiPort = if ($env:FASTAPI_PORT) { $env:FASTAPI_PORT } else { "8002" }
+Write-Host ""
+Write-Host "--- Main API ---" -ForegroundColor Yellow
+Write-Host -NoNewline "Waiting for Main API... "
+for ($i = 1; $i -le 30; $i++) {
+    try {
+        $response = Invoke-RestMethod -Uri "http://localhost:${FastApiPort}/health" -TimeoutSec 2 -ErrorAction SilentlyContinue
+        Write-Host "ready" -ForegroundColor Green
+        break
+    } catch {
+        if ($i -eq 30) {
+            Write-Host "timeout" -ForegroundColor Red
+            Write-Host "Check logs: docker logs wfhub-v2-main-api"
+            exit 1
+        }
+        Start-Sleep -Seconds 1
+    }
+}
+
+# === Run Database Migrations ===
+Write-Host ""
+Write-Host "--- Database Migrations ---" -ForegroundColor Yellow
+Write-Host -NoNewline "Running Alembic migrations... "
+$prevErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$migrationOutput = & docker exec wfhub-v2-main-api alembic upgrade head 2>&1
+$migrationExitCode = $LASTEXITCODE
+$ErrorActionPreference = $prevErrorAction
+
+if ($migrationExitCode -eq 0) {
+    Write-Host "done" -ForegroundColor Green
+} else {
+    Write-Host "failed (checking status...)" -ForegroundColor Yellow
+}
+
+if ($migrationOutput) {
+    Write-Host "Migration output:" -ForegroundColor DarkYellow
+    $migrationOutput | ForEach-Object { Write-Host "  $_" }
+}
+
+if ($migrationExitCode -ne 0) {
+    docker exec wfhub-v2-main-api alembic current 2>&1 | Select-Object -First 5
+}
+
 # === Wait for Aider API ===
 Write-Host ""
 Write-Host "--- Aider API ---" -ForegroundColor Yellow
@@ -242,8 +305,35 @@ Write-Host "  # Run POC game tests"
 Write-Host "  pytest tests/test_poc_game.py -v -s"
 Write-Host ""
 
+# === Start File Opener Service ===
+Write-Host ""
+Write-Host "--- File Opener Service ---" -ForegroundColor Yellow
+$FileOpenerPort = 8888
+$FileOpenerScript = Join-Path $ScriptDir "scripts\file-opener.py"
+
+# Check if already running
+$existingProcess = Get-NetTCPConnection -LocalPort $FileOpenerPort -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -First 1
+
+if ($existingProcess) {
+    Write-Host "file-opener: already running (pid $existingProcess)" -ForegroundColor Green
+} else {
+    if (Test-Path $FileOpenerScript) {
+        $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($pythonCmd) {
+            Start-Process -FilePath python -ArgumentList $FileOpenerScript -WindowStyle Hidden
+            Write-Host "file-opener: started on http://localhost:${FileOpenerPort}" -ForegroundColor Green
+        } else {
+            Write-Host "file-opener: python not found, skipping" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "file-opener: script not found at $FileOpenerScript" -ForegroundColor Yellow
+    }
+}
+
 # === Open Browser ===
 if (-not $NoBrowser) {
+    Write-Host ""
     Write-Host "Opening browser..."
     try {
         Start-Process "https://wfhub.localhost"
@@ -256,4 +346,5 @@ if (-not $NoBrowser) {
     }
 }
 
+Write-Host ""
 Write-Host "Ready!" -ForegroundColor Green

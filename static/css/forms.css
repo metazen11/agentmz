@@ -290,6 +290,40 @@
   font-size: 11px;
   white-space: nowrap;
 }
+.subtask-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  background: #2d3748;
+  color: #a0aec0;
+  border-radius: 10px;
+  vertical-align: middle;
+}
+.subtask-badge:hover {
+  background: #4a5568;
+}
+.subtask-status {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.subtask-status-backlog { background: #374151; color: #9ca3af; }
+.subtask-status-inprogress, .subtask-status-in_progress { background: #1e3a5f; color: #60a5fa; }
+.subtask-status-completed { background: #14532d; color: #4ade80; }
+.subtask-status-failed { background: #7f1d1d; color: #f87171; }
+.subtask-node {
+  color: #6b7280;
+  font-size: 10px;
+  margin-left: 6px;
+}
+.depth-indicator {
+  color: #4b5563;
+  margin-right: 4px;
+  font-family: monospace;
+}
 .criteria-main {
   display: flex;
   align-items: center;

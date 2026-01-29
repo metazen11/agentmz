@@ -26,6 +26,7 @@ export const state = {
   visionModel: '',
   visionImageMaxSize: 640,
   visionModelRegex: null,
+  useAiderCli: true,
 
   // Files
   fileTree: [],
@@ -49,7 +50,14 @@ export const state = {
   currentLogTab: 'ollama_http',
   logsCollapsed: false,
   logSockets: {},
-  logSocketConnected: {}
+  logSocketConnected: {},
+
+  // App config (fetched from backend)
+  appConfig: {
+    projectRoot: '',
+    workspacesDir: '',
+    defaultWorkspace: 'poc'
+  }
 };
 
 // Legacy variable exports for gradual migration
@@ -61,6 +69,7 @@ export let selectedTask = state.selectedTask;
 export let availableModels = state.availableModels;
 export let isModelSwitching = state.isModelSwitching;
 export let visionModel = state.visionModel;
+export let useAiderCli = state.useAiderCli;
 export let referencedFiles = state.referencedFiles;
 export let attachedImages = state.attachedImages;
 export let envEntries = state.envEntries;
@@ -192,10 +201,19 @@ export function setVisionModelRegex(value) {
   state.visionModelRegex = value;
 }
 
+export function setUseAiderCli(value) {
+  state.useAiderCli = value;
+  useAiderCli = value;
+}
+
 export function setIsSyncingReferencedFiles(value) {
   state.isSyncingReferencedFiles = value;
 }
 
 export function setLogsCollapsed(value) {
   state.logsCollapsed = value;
+}
+
+export function setAppConfig(value) {
+  state.appConfig = { ...state.appConfig, ...value };
 }

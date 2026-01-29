@@ -205,6 +205,27 @@ class TestChatInterfaceAPIs:
             # LLM timeout is acceptable - the endpoint works
             pytest.skip("LLM inference timed out (expected with slow models)")
 
+    def test_chat_mode_aider_cli_toggle(self):
+        """Chat API should accept use_aider_cli and return a normalized response."""
+        try:
+            res = requests.post(
+                f"{MAIN_API}/api/agent/chat",
+                json={
+                    "prompt": "list the files in this directory",
+                    "workspace": "poc",
+                    "chat_mode": True,
+                    "use_aider_cli": True,
+                },
+                timeout=120,
+            )
+            assert res.status_code == 200
+            data = res.json()
+            assert "success" in data
+            assert "status" in data
+            assert "summary" in data
+        except requests.exceptions.ReadTimeout:
+            pytest.skip("LLM inference timed out (expected with slow models)")
+
     def test_logs_endpoint_ollama(self):
         """Get ollama container logs."""
         res = requests.get(f"{MAIN_API}/logs/ollama?lines=10", timeout=REQUEST_TIMEOUT)

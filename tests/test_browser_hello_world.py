@@ -14,7 +14,7 @@ Features:
 - Checks for JavaScript errors
 
 Run with:
-    cd /mnt/c/dropbox/_coding/agentic/v2
+    cd /mnt/c/dropbox/_coding/agentmz
     APP_URL=https://wfhub.localhost pytest tests/test_browser_hello_world.py -v
     pytest tests/test_browser_hello_world.py -v --headed  # Watch in browser
 

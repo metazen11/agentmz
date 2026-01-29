@@ -25,6 +25,8 @@ NC='\033[0m' # No Color
 SKIP_MODELS=false
 SKIP_HTTPS=false
 NO_BROWSER=false
+INSTALL_AIDER=false
+INSTALL_AGENT=false
 
 # === Parse CLI Arguments ===
 while [[ $# -gt 0 ]]; do
@@ -41,6 +43,19 @@ while [[ $# -gt 0 ]]; do
             NO_BROWSER=true
             shift
             ;;
+        --aider)
+            INSTALL_AIDER=true
+            shift
+            ;;
+        --agent)
+            INSTALL_AGENT=true
+            shift
+            ;;
+        --all)
+            INSTALL_AIDER=true
+            INSTALL_AGENT=true
+            shift
+            ;;
         --help|-h)
             echo "Workflow Hub v2 - Unified Installer"
             echo ""
@@ -50,6 +65,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --skip-models    Skip Ollama model pulling"
             echo "  --skip-https     Skip local HTTPS trust step"
             echo "  --no-browser     Don't open browser at end"
+            echo "  --aider          Install aider-chat CLI tool"
+            echo "  --agent          Register 'agent' shell command"
+            echo "  --all            Install everything (aider + agent)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "After installation:"
@@ -231,13 +249,14 @@ DEFAULT_WORKSPACE=poc
 UPLOADS_DIR=uploads
 ATTACHMENT_MAX_BYTES=10485760
 
-# Project root for self-editing (dogfooding)
-PROJECT_ROOT=/mnt/c/dropbox/_coding/agentic/v2
-
 # Git identity (for aider workspace repos)
 GIT_USER_NAME=Metazen11
 GIT_USER_EMAIL=metazen@artofmetazen.com
 EOF
+    # Add PROJECT_ROOT with current directory (heredoc uses single quotes so can't expand)
+    echo "" >> .env
+    echo "# Project root for self-editing (dogfooding)" >> .env
+    echo "PROJECT_ROOT=${SCRIPT_DIR}" >> .env
     echo -e "  .env: ${GREEN}created${NC}"
 else
     echo -e "  .env: ${GREEN}exists${NC}"
@@ -434,6 +453,34 @@ if [ "$NO_BROWSER" = false ]; then
     }
 
     open_browser "https://wfhub.localhost" || open_browser "http://localhost:8002"
+fi
+
+# === Optional: Install Aider ===
+if [ "$INSTALL_AIDER" = true ]; then
+    echo ""
+    echo -e "${YELLOW}Installing aider-chat...${NC}"
+    if command -v aider &> /dev/null; then
+        echo -e "  aider: ${GREEN}already installed${NC}"
+    else
+        if curl -LsSf https://aider.chat/install.sh | sh; then
+            echo -e "  aider: ${GREEN}installed${NC}"
+        else
+            echo -e "  aider: ${YELLOW}install failed, try manually: pip install aider-chat${NC}"
+        fi
+    fi
+fi
+
+# === Optional: Register Agent Command ===
+if [ "$INSTALL_AGENT" = true ]; then
+    echo ""
+    echo -e "${YELLOW}Registering 'agent' command...${NC}"
+    if [ -f "./install_agent.sh" ]; then
+        ./install_agent.sh
+    elif [ -f "./agent_alias_install.sh" ]; then
+        ./agent_alias_install.sh
+    else
+        echo -e "  agent: ${YELLOW}install script not found${NC}"
+    fi
 fi
 
 echo -e "${GREEN}Done!${NC}"

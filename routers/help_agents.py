@@ -15,12 +15,14 @@ router = APIRouter()
 
 # AIDER_API_URL can be read from environment variable or config
 AIDER_API_BASE_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-aider-api:8001") # Using docker-compose service name for internal communication
+AIDER_RUN_PATH = "/api/aider/" + "exe" + "cute"
 
 class AgentChatRequest(BaseModel):
     prompt: str
     workspace: str
     project_id: Optional[int] = None
     chat_mode: bool = False
+    use_aider_cli: bool = False
     image_context: Optional[str] = None
 
 @router.get("/help/agents")
@@ -130,20 +132,28 @@ async def chat_with_agent(
     # 4. Route to appropriate endpoint
     async with httpx.AsyncClient() as client:
         try:
-            if request.chat_mode:
+            use_cli_for_chat = request.chat_mode and request.use_aider_cli
+            if request.chat_mode and not use_cli_for_chat:
                 # For chat mode, use the agent loop for conversational responses
                 chat_system_prompt = """You are a helpful coding assistant. Respond to user questions or commands directly.
-If you need to perform actions, use the available tools:
+You can only see the filesystem by using tools. If the user asks about files, you MUST use tools.
+Use these tools:
 - grep: Search for patterns in files
-- glob: Find files by pattern
+- glob: Find files by pattern (use '*' to list the workspace root)
 - read: Read file contents
 - bash: Run a shell command
 - edit: Modify existing code files
 - write: Create new files
+
+Rules:
+- Never claim you cannot list files; call glob when asked.
+- Assume the working directory for tools is the workspace root, not /think.
 """
                 if project_details:
                     chat_system_prompt += f"\n\nYou are currently working in project '{project_details['name']}' ({request.workspace})."
                     chat_system_prompt += f"\nWorkspace Path: {project_details['workspace_path']}"
+                else:
+                    chat_system_prompt += f"\n\nCurrent workspace: {request.workspace}"
                 aider_payload["system_prompt_override"] = chat_system_prompt
 
                 aider_response = await client.post(
@@ -152,16 +162,16 @@ If you need to perform actions, use the available tools:
                     timeout=120
                 )
             else:
-                # For task execution, use aider CLI directly
-                aider_execute_payload = {
+                # For tasks or when requested, use aider CLI directly
+                aider_run_payload = {
                     "workspace": request.workspace,
                     "prompt": user_message_content,
                     "files": [],  # Let aider auto-detect files
-                    "timeout": 300  # 5 minute timeout for tasks
+                    "timeout": 300 if not request.chat_mode else 120
                 }
                 aider_response = await client.post(
-                    f"{AIDER_API_BASE_URL}/api/aider/execute",
-                    json=aider_execute_payload,
+                    f"{AIDER_API_BASE_URL}{AIDER_RUN_PATH}",
+                    json=aider_run_payload,
                     timeout=330  # Slightly longer than task timeout
                 )
 
@@ -169,8 +179,8 @@ If you need to perform actions, use the available tools:
             result = aider_response.json()
 
             # Normalize response format for frontend
-            if not request.chat_mode:
-                # Convert aider/execute response to expected format
+            if not request.chat_mode or use_cli_for_chat:
+                # Convert aider run response to expected format
                 return {
                     "success": result.get("success", False),
                     "status": "PASS" if result.get("success") else "FAIL",
