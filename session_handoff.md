@@ -1262,3 +1262,22 @@ Implemented provider-agnostic external task import system:
 
 ### Verification
 - /api/config workspace accepts /workspaces/poc, workspaces/poc, poc, and [%root%].
+
+---
+
+## Implementation Status (2026-01-29)
+
+### Completed
+- [x] Renamed `scripts/langchain_cli.py` to `scripts/agent_cli.py`
+- [x] Added `.env` and `.env.example` defaults for Agent CLI (model, workspace, use_langgraph, max_iters, base url)
+- [x] Added Agent CLI default resolver and max-iters support
+- [x] Added unit tests for Agent CLI default resolution
+- [x] Switched Agent CLI memory scope to use project name (not project id)
+- [x] Updated Agent CLI defaults to use Caddy domain base URL and enable LangGraph by default
+- [x] Default Agent CLI project name set to `poc`
+
+### Tests
+- `python -m pytest tests/test_agent_cli.py -v` (2 passed)
+
+### Notes
+- Pytest emitted a warning on Python 3.14.2: "Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater."

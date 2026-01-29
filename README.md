@@ -290,6 +290,26 @@ pytest tests/test_aider_api.py -v
 pytest tests/test_poc_game.py -v -s
 ```
 
+## Agent CLI (LangChain, Python 3.12)
+
+The Agent CLI runner uses tools and optional persistent memory. Defaults come from `.env`.
+
+```bash
+# Create a Python 3.12 venv (Windows)
+py -3.12 -m venv .venv312
+
+# Install LangChain dependencies
+.\.venv312\Scripts\python.exe -m pip install langchain langchain-ollama langchain-community python-dotenv langgraph-checkpoint-postgres psycopg[binary]
+
+# Run the CLI (local Ollama)
+.\.venv312\Scripts\python.exe scripts\agent_cli.py --prompt "List files in the workspace"
+
+# Run with persistent memory (Postgres)
+set DATABASE_URL=postgresql://wfhub:<password>@localhost:5433/agentic
+set LC_RETENTION_DAYS=30
+.\.venv312\Scripts\python.exe scripts\agent_cli.py --prompt "Remember my project is Alpha" --project-name Alpha --use-langgraph
+```
+
 ## Development
 
 ### Start Services
