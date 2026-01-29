@@ -12,3 +12,4 @@
 - Python cannot resolve `ollama.localhost` (gaierror); curl works. Used `--ollama http://localhost:11435` for LangGraph runs.
 - LangGraph created `workspaces/poc/index.html`; manual fix applied to ensure valid animated Hello World.
 - Agent CLI prompt now explicitly requests valid HTML5 output.
+- Added Agent CLI debug flags to log messages/tools/payloads.

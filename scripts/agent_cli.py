@@ -6,6 +6,7 @@ Defaults come from .env. Example:
   python scripts/agent_cli.py --prompt "List files in /workspaces/poc"
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -17,7 +18,7 @@ except ImportError:
 
 try:
     from langchain_ollama import ChatOllama
-    from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+    from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
     from langchain_core.tools import tool
     try:
         from langchain.agents import create_agent as _create_agent
@@ -37,6 +38,53 @@ except Exception:  # pragma: no cover - import guard
 def _load_env() -> None:
     if load_dotenv:
         load_dotenv()
+
+
+def _debug_enabled() -> bool:
+    return os.environ.get("AGENT_CLI_DEBUG", "").lower() in {"1", "true", "yes"} or \
+        os.environ.get("LC_DEBUG", "").lower() in {"1", "true", "yes"}
+
+
+def _debug_payload_enabled() -> bool:
+    return os.environ.get("AGENT_CLI_DEBUG_PAYLOAD", "").lower() in {"1", "true", "yes"}
+
+
+def _serialize_messages(messages: list[BaseMessage]) -> list[dict]:
+    serialized = []
+    for message in messages:
+        entry = {
+            "type": message.type,
+            "content": message.content,
+        }
+        if getattr(message, "name", None):
+            entry["name"] = message.name
+        if isinstance(message, ToolMessage):
+            entry["tool_call_id"] = message.tool_call_id
+        serialized.append(entry)
+    return serialized
+
+
+def _tool_debug_summary(tools, include_schema: bool = False) -> list[dict]:
+    summary = []
+    for tool_item in tools:
+        entry = {
+            "name": getattr(tool_item, "name", ""),
+            "description": getattr(tool_item, "description", ""),
+        }
+        if include_schema:
+            schema = getattr(tool_item, "args_schema", None)
+            if schema is not None:
+                try:
+                    entry["args_schema"] = schema.model_json_schema()
+                except Exception:
+                    entry["args_schema"] = str(schema)
+        summary.append(entry)
+    return summary
+
+
+def _debug_log(payload: dict) -> None:
+    print("[AGENT_CLI_DEBUG] payload")
+    print(json.dumps(payload, indent=2))
 
 
 def _resolve_defaults(env: dict) -> dict:
@@ -206,7 +254,10 @@ def _build_tools(workspace_root: str):
         if not os.path.isdir(target):
             return {"success": False, "error": f"Not a directory: {path}"}
         entries = sorted(os.listdir(target))
-        return {"success": True, "files": entries, "count": len(entries)}
+        result = {"success": True, "files": entries, "count": len(entries)}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] list_files {path} -> {len(entries)} entries")
+        return result
 
     @tool
     def glob(pattern: str) -> dict:
@@ -221,7 +272,10 @@ def _build_tools(workspace_root: str):
             os.path.relpath(path, workspace_root)
             for path in matches
         ]
-        return {"success": True, "matches": sorted(rel_matches), "count": len(rel_matches)}
+        result = {"success": True, "matches": sorted(rel_matches), "count": len(rel_matches)}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] glob {pattern} -> {result['count']} matches")
+        return result
 
     @tool
     def read_file(path: str, start: int = 1, lines: int = 200) -> dict:
@@ -234,7 +288,7 @@ def _build_tools(workspace_root: str):
         with open(target, "r", encoding="utf-8", errors="ignore") as handle:
             all_lines = handle.readlines()
         slice_lines = all_lines[start - 1:start - 1 + lines]
-        return {
+        result = {
             "success": True,
             "path": path,
             "start": start,
@@ -242,6 +296,9 @@ def _build_tools(workspace_root: str):
             "total_lines": len(all_lines),
             "content": "".join(slice_lines),
         }
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] read_file {path} -> {result['lines']} lines")
+        return result
 
     @tool
     def write_file(path: str, content: str) -> dict:
@@ -254,7 +311,10 @@ def _build_tools(workspace_root: str):
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "w", encoding="utf-8") as handle:
             handle.write(content or "")
-        return {"success": True, "path": path, "bytes": len(content or "")}
+        result = {"success": True, "path": path, "bytes": len(content or "")}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] write_file {path} -> {result['bytes']} bytes")
+        return result
 
     @tool
     def apply_patch(path: str, patch: str) -> dict:
@@ -274,7 +334,10 @@ def _build_tools(workspace_root: str):
             return {"success": False, "error": str(exc)}
         with open(target, "w", encoding="utf-8") as handle:
             handle.write(updated)
-        return {"success": True, "path": path, "bytes": len(updated)}
+        result = {"success": True, "path": path, "bytes": len(updated)}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] apply_patch {path} -> {result['bytes']} bytes")
+        return result
 
     @tool
     def mkdir(path: str, exist_ok: bool = True) -> dict:
@@ -286,7 +349,10 @@ def _build_tools(workspace_root: str):
             os.makedirs(target, exist_ok=bool(exist_ok))
         except OSError as exc:
             return {"success": False, "error": str(exc)}
-        return {"success": True, "path": path}
+        result = {"success": True, "path": path}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] mkdir {path}")
+        return result
 
     @tool
     def delete_file(path: str, recursive: bool = False) -> dict:
@@ -306,7 +372,10 @@ def _build_tools(workspace_root: str):
                 os.remove(target)
         except OSError as exc:
             return {"success": False, "error": str(exc)}
-        return {"success": True, "path": path}
+        result = {"success": True, "path": path}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] delete_file {path}")
+        return result
 
     @tool
     def move_file(src: str, dst: str) -> dict:
@@ -323,7 +392,10 @@ def _build_tools(workspace_root: str):
             shutil.move(src_path, dst_path)
         except OSError as exc:
             return {"success": False, "error": str(exc)}
-        return {"success": True, "src": src, "dst": dst}
+        result = {"success": True, "src": src, "dst": dst}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] move_file {src} -> {dst}")
+        return result
 
     @tool
     def copy_file(src: str, dst: str) -> dict:
@@ -345,7 +417,10 @@ def _build_tools(workspace_root: str):
                 shutil.copy2(src_path, dst_path)
         except OSError as exc:
             return {"success": False, "error": str(exc)}
-        return {"success": True, "src": src, "dst": dst}
+        result = {"success": True, "src": src, "dst": dst}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] copy_file {src} -> {dst}")
+        return result
 
     @tool
     def stat_path(path: str) -> dict:
@@ -356,7 +431,7 @@ def _build_tools(workspace_root: str):
         if not os.path.exists(target):
             return {"success": False, "error": f"Path not found: {path}"}
         info = os.stat(target)
-        return {
+        result = {
             "success": True,
             "path": path,
             "size": info.st_size,
@@ -364,6 +439,9 @@ def _build_tools(workspace_root: str):
             "is_dir": os.path.isdir(target),
             "is_file": os.path.isfile(target),
         }
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] stat_path {path}")
+        return result
 
     @tool
     def list_tree(path: str = ".", max_depth: int = 2, max_files: int = 200) -> dict:
@@ -385,8 +463,14 @@ def _build_tools(workspace_root: str):
                 rel_path = os.path.join(rel_root, name)
                 files.append(rel_path.replace("\\", "/"))
                 if len(files) >= max_files:
-                    return {"success": True, "files": files, "count": len(files), "truncated": True}
-        return {"success": True, "files": files, "count": len(files), "truncated": False}
+                    result = {"success": True, "files": files, "count": len(files), "truncated": True}
+                    if _debug_enabled():
+                        print(f"[AGENT_CLI_DEBUG] list_tree {path} -> {result['count']} files (truncated)")
+                    return result
+        result = {"success": True, "files": files, "count": len(files), "truncated": False}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] list_tree {path} -> {result['count']} files")
+        return result
 
     @tool
     def grep(pattern: str, path: str = ".", glob_pattern: str = "*") -> dict:
@@ -412,7 +496,10 @@ def _build_tools(workspace_root: str):
                                 matches.append({"file": rel_path, "line": idx, "text": line.strip()})
                 except OSError:
                     continue
-        return {"success": True, "count": len(matches), "matches": matches}
+        result = {"success": True, "count": len(matches), "matches": matches}
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] grep {pattern} -> {result['count']} matches")
+        return result
 
     @tool
     def run_command(command: str) -> dict:
@@ -441,12 +528,15 @@ def _build_tools(workspace_root: str):
             text=True,
             timeout=10,
         )
-        return {
+        result = {
             "success": result.returncode == 0,
             "returncode": result.returncode,
             "stdout": result.stdout.strip(),
             "stderr": result.stderr.strip(),
         }
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] run_command {command} -> {result['returncode']}")
+        return result
 
     return [
         list_files,
@@ -466,7 +556,8 @@ def _build_tools(workspace_root: str):
 
 
 def _run_loop(llm, tools, prompt: str, max_iters: int = 6) -> str:
-    debug = os.environ.get("LC_DEBUG", "").lower() in {"1", "true", "yes"}
+    debug = _debug_enabled()
+    debug_payload = _debug_payload_enabled()
     messages = [
         SystemMessage(content=(
             "You MUST use tools for all filesystem operations. "
@@ -482,6 +573,14 @@ def _run_loop(llm, tools, prompt: str, max_iters: int = 6) -> str:
     ]
 
     for _ in range(max_iters):
+        if debug_payload:
+            payload = {
+                "model": getattr(llm, "model", ""),
+                "base_url": getattr(llm, "base_url", ""),
+                "messages": _serialize_messages(messages),
+                "tools": _tool_debug_summary(tools, include_schema=True),
+            }
+            _debug_log(payload)
         response = llm.invoke(messages)
         tool_calls = getattr(response, "tool_calls", None) or []
         if debug and tool_calls:
@@ -585,6 +684,15 @@ def main() -> int:
                 "configurable": {"thread_id": thread_id},
                 "metadata": {"created_at": datetime.now(UTC).isoformat()},
             }
+            if _debug_payload_enabled():
+                payload = {
+                    "model": getattr(client, "model", ""),
+                    "base_url": getattr(client, "base_url", ""),
+                    "messages": _serialize_messages([HumanMessage(content=prompt)]),
+                    "tools": _tool_debug_summary(tools, include_schema=True),
+                    "thread_id": thread_id,
+                }
+                _debug_log(payload)
             result = agent.invoke(
                 {"messages": [HumanMessage(content=prompt)]},
                 config=config,
