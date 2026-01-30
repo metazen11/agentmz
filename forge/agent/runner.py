@@ -22,7 +22,7 @@ try:
     from agent_cli import (
         _build_client,
         _build_tools,
-        _resolve_workspace,
+        _resolve_workspace as _agent_resolve_workspace,
         _run_loop,
         _check_ollama_service,
         _extract_tool_calls_from_text,
@@ -32,6 +32,20 @@ try:
     )
 except ImportError as e:
     raise ImportError(f"Failed to import agent_cli: {e}. Ensure scripts/agent_cli.py exists.")
+
+
+def _resolve_workspace(workspace: str) -> str:
+    """Resolve workspace path - supports absolute paths and workspace names."""
+    if not workspace:
+        return os.getcwd()
+    # If it's an absolute path, use it directly
+    if os.path.isabs(workspace):
+        return workspace
+    # If it exists relative to cwd, use it
+    if os.path.isdir(workspace):
+        return os.path.abspath(workspace)
+    # Otherwise use the agent_cli resolver (workspaces/name)
+    return _agent_resolve_workspace(workspace)
 
 
 def _run_fallback_with_results(

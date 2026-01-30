@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Forge CLI wrapper - run from anywhere
+# Forge CLI wrapper - run from anywhere, uses cwd as workspace
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
@@ -13,6 +13,10 @@ fi
 # Add repo to PYTHONPATH
 export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
 
-# Run forge from repo root
-cd "$REPO_ROOT"
-exec python -m forge "$@"
+# Pass current directory as workspace if not specified
+# Check if -w or --workspace is in args
+if [[ ! "$*" =~ (-w[[:space:]]|--workspace[[:space:]]|--workspace=) ]]; then
+    exec python -m forge --workspace "$(pwd)" "$@"
+else
+    exec python -m forge "$@"
+fi
