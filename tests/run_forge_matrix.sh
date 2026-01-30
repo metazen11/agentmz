@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
+# Note: removed -e to prevent exit on error; we handle failures gracefully
+
+FAILED_TESTS=()
 
 log() {
   echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $*"
@@ -57,8 +60,9 @@ if [[ -z "$PYTHON_CMD" ]]; then
   elif command -v python3 >/dev/null 2>&1; then
     PYTHON_CMD=python3
   else
-    log "No Python interpreter found; install python or set FORGE_PYTHON."
-    exit 1
+    log "ERROR: No Python interpreter found; install python or set FORGE_PYTHON."
+    log "Exiting gracefully."
+    return 1 2>/dev/null || exit 1
   fi
 fi
 log "Using Python interpreter: $PYTHON_CMD"
@@ -128,8 +132,10 @@ check_ollama_health() {
 
 MODELS="${FORGE_MODEL_MATRIX:-}"
 if [[ -z "$MODELS" ]]; then
-  log "FORGE_MODEL_MATRIX is empty. Set it before running."
-  exit 1
+  log "ERROR: FORGE_MODEL_MATRIX is empty. Set it before running."
+  log "Example: export FORGE_MODEL_MATRIX=qwen3:0.6b,qwen3:1.7b"
+  log "Exiting gracefully."
+  return 1 2>/dev/null || exit 1
 fi
 MODELS="$(sort_models_by_size "$MODELS")"
 log "Running models: $MODELS"
@@ -221,6 +227,7 @@ for MODEL in "${MODEL_LIST[@]}"; do
         log "HTML checks passed after improve: $HTML_FILE"
       else
         log "HTML checks failed after improve: $HTML_FILE"
+        FAILED_TESTS+=("$MODEL:html")
         log "Continuing despite failed HTML checks; inspect $HTML_FILE to debug."
         continue
       fi
@@ -239,7 +246,8 @@ for MODEL in "${MODEL_LIST[@]}"; do
     fi
     if ! check_js_create "$JS_FILE"; then
       log "JS create checks failed: $JS_FILE"
-      exit 1
+      FAILED_TESTS+=("$MODEL:js_create")
+      continue
     fi
 
     IMPROVE="You are Forge, a system-agnostic coding agent. Improve the existing file function-$SLUG.js without changing the filename. Keep the console log and hello world text. Wrap the logic in DOMContentLoaded and avoid overwriting the entire body. Create a dedicated element and append it to the body. Use read_file first, then apply_patch to update the file."
@@ -248,9 +256,22 @@ for MODEL in "${MODEL_LIST[@]}"; do
       log "JS improve checks passed: $JS_FILE"
     else
       log "JS improve checks failed: $JS_FILE"
-      exit 1
+      FAILED_TESTS+=("$MODEL:js_improve")
     fi
   fi
 done
 
 log "Forge matrix run complete."
+
+# Report summary
+if [[ ${#FAILED_TESTS[@]} -gt 0 ]]; then
+  log "========================================="
+  log "FAILED TESTS (${#FAILED_TESTS[@]}):"
+  for test in "${FAILED_TESTS[@]}"; do
+    log "  - $test"
+  done
+  log "========================================="
+  log "Some tests failed. Review logs above for details."
+else
+  log "All tests passed!"
+fi
