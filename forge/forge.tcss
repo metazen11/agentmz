@@ -1,0 +1,43 @@
+/* Forge TUI Stylesheet */
+
+Screen {
+    background: $surface;
+}
+
+Header {
+    background: $primary;
+    color: $text;
+}
+
+Footer {
+    background: $primary-darken-1;
+}
+
+#status-bar {
+    dock: top;
+    height: 1;
+    background: $primary-darken-2;
+    padding: 0 1;
+}
+
+#chat-container {
+    height: 1fr;
+    border: solid $primary-darken-1;
+    margin: 0 0 1 0;
+}
+
+#chat {
+    height: 100%;
+    background: $surface;
+    padding: 1;
+}
+
+#prompt-input {
+    dock: bottom;
+    margin: 0 0 0 0;
+    border: solid $primary;
+}
+
+#prompt-input:focus {
+    border: solid $accent;
+}
