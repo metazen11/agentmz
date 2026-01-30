@@ -58,8 +58,10 @@ class FileAutoComplete(AutoComplete if HAS_AUTOCOMPLETE else object):
         """Clear file cache to force rescan."""
         self._file_cache = None
 
-    def get_search_string(self, value: str) -> str:
+    def get_search_string(self, target_state) -> str:
         """Extract the search string after @."""
+        # target_state is a TargetState namedtuple with text and cursor_position
+        value = target_state.text if hasattr(target_state, 'text') else str(target_state)
         at_pos = value.rfind("@")
         if at_pos == -1:
             return ""
@@ -88,8 +90,10 @@ class FileAutoComplete(AutoComplete if HAS_AUTOCOMPLETE else object):
 
         return matches
 
-    def apply_completion(self, value: str, item: DropdownItem) -> str:
+    def apply_completion(self, target_state, item: DropdownItem) -> str:
         """Insert the selected file path after @."""
+        # target_state is a TargetState namedtuple with text and cursor_position
+        value = target_state.text if hasattr(target_state, 'text') else str(target_state)
         at_pos = value.rfind("@")
         if at_pos == -1:
             return value + item.main
