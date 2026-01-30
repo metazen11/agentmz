@@ -17,11 +17,13 @@ class ForgeApp(App):
 
     CSS_PATH = "forge.tcss"
     TITLE = "Forge"
+    ENABLE_COMMAND_PALETTE = False  # Hide palette, use menu instead
 
     BINDINGS = [
         Binding("ctrl+enter", "submit", "Submit", show=True),
         Binding("ctrl+c", "quit", "Quit", show=True),
         Binding("ctrl+l", "clear", "Clear", show=True),
+        Binding("ctrl+m", "menu", "Menu", show=True),
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("up", "history_prev", "Previous", show=False),
         Binding("down", "history_next", "Next", show=False),
@@ -151,6 +153,10 @@ class ForgeApp(App):
         """Submit the current prompt (handled by Input widget)."""
         # This is here to show the binding in footer; actual submit is handled by Input.Submitted
         pass
+
+    def action_menu(self) -> None:
+        """Show menu options."""
+        self.notify("Menu: Ctrl+L Clear | Ctrl+C Quit | Up/Down History")
 
     def action_clear(self) -> None:
         """Clear the chat display."""
