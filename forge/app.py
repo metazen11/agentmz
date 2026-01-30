@@ -1,5 +1,6 @@
 """Forge TUI - Main Textual Application."""
 import os
+import subprocess
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -21,6 +22,8 @@ class ForgeApp(App):
 
     BINDINGS = [
         Binding("ctrl+enter", "submit", "Submit", show=True),
+        Binding("ctrl+y", "copy", "Copy", show=True),
+        Binding("ctrl+v", "paste", "Paste", show=True),
         Binding("ctrl+c", "quit", "Quit", show=True),
         Binding("ctrl+l", "clear", "Clear", show=True),
         Binding("ctrl+m", "menu", "Menu", show=True),
@@ -46,6 +49,7 @@ class ForgeApp(App):
         self.history: list[str] = []
         self.history_index = -1
         self.current_worker: Worker | None = None
+        self.last_response: str = ""  # For clipboard copy
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -139,6 +143,7 @@ class ForgeApp(App):
                     chat.write(" [green]done[/green]\n")
                 elif event_type == "done":
                     content = event.get("content", "")
+                    self.last_response = content  # Store for clipboard
                     chat.write(f"\n[green]{content}[/green]\n")
                 elif event_type == "error":
                     msg = event.get("message", "Unknown error")
@@ -154,9 +159,46 @@ class ForgeApp(App):
         # This is here to show the binding in footer; actual submit is handled by Input.Submitted
         pass
 
+    def action_copy(self) -> None:
+        """Copy last response to clipboard (WSL/Windows)."""
+        if not self.last_response:
+            self.notify("Nothing to copy")
+            return
+        try:
+            # WSL: use clip.exe to copy to Windows clipboard
+            process = subprocess.Popen(
+                ["clip.exe"],
+                stdin=subprocess.PIPE,
+                text=True,
+            )
+            process.communicate(input=self.last_response)
+            self.notify(f"Copied {len(self.last_response)} chars to clipboard")
+        except Exception as e:
+            self.notify(f"Copy failed: {e}")
+
+    def action_paste(self) -> None:
+        """Paste from clipboard into input (WSL/Windows)."""
+        try:
+            # WSL: use powershell to get Windows clipboard
+            result = subprocess.run(
+                ["powershell.exe", "-command", "Get-Clipboard"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout:
+                text = result.stdout.strip()
+                prompt_input = self.query_one("#prompt-input", Input)
+                prompt_input.value = prompt_input.value + text
+                self.notify(f"Pasted {len(text)} chars")
+            else:
+                self.notify("Clipboard empty")
+        except Exception as e:
+            self.notify(f"Paste failed: {e}")
+
     def action_menu(self) -> None:
         """Show menu options."""
-        self.notify("Menu: Ctrl+L Clear | Ctrl+C Quit | Up/Down History")
+        self.notify("Ctrl+Y Copy | Ctrl+V Paste | Ctrl+L Clear | Up/Down History")
 
     def action_clear(self) -> None:
         """Clear the chat display."""
