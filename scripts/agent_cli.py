@@ -915,7 +915,15 @@ def _run_tool_fallback(
             args = call.get("args") or {}
             tool_fn = tool_map.get(name)
             if not tool_fn:
-                messages.append(ToolMessage(content=f"Unknown tool: {name}", tool_call_id=name or "tool"))
+                # Self-correction: tell LLM what tools ARE available
+                available = ", ".join(tool_map.keys())
+                error_msg = (
+                    f"Unknown tool '{name}'. "
+                    f"Attempted: {json.dumps({'name': name, 'args': args})}. "
+                    f"Available tools: {available}. "
+                    "Please retry with a valid tool."
+                )
+                messages.append(ToolMessage(content=error_msg, tool_call_id=name or "tool"))
                 continue
             try:
                 result = tool_fn.invoke(args)
@@ -925,7 +933,13 @@ def _run_tool_fallback(
                     msg = args.get("message") or args.get("text") or args.get("content") or str(args)
                     result = {"success": True, "message": msg}
                 else:
-                    result = {"success": False, "error": str(exc), "raw_args": args}
+                    # Self-correction: show what was attempted and how to fix
+                    error_msg = (
+                        f"Tool '{name}' failed: {exc}. "
+                        f"Attempted: {json.dumps({'name': name, 'args': args})}. "
+                        "Please check arguments and retry."
+                    )
+                    result = {"success": False, "error": error_msg}
 
             # Check if task is complete (successful file write, etc.)
             if _is_task_complete(name, result):
@@ -993,7 +1007,9 @@ def _run_text_fallback(
         tool_fn = tool_map.get(name)
         if not tool_fn:
             if debug:
-                print(f"[AGENT_CLI_DEBUG] fallback_unknown_tool: {name}")
+                print(f"[AGENT_CLI_DEBUG] fallback_unknown_tool: {name} args={args}")
+            # Show raw attempt for unknown tools
+            print(f"[Attempted: {name}] {json.dumps(args, indent=2)}")
             continue
         try:
             result = tool_fn.invoke(args)

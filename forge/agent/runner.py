@@ -93,7 +93,10 @@ def _run_fallback_with_results(
         tool_fn = tool_map.get(name)
 
         if not tool_fn:
-            results.append(f"[{name}] Unknown tool")
+            # Show what was attempted for unknown tools
+            import json
+            results.append(f"[{name}] Unknown tool - attempted: {json.dumps(args)}")
+            results.append(f"Available: {', '.join(tool_map.keys())}")
             continue
 
         try:
