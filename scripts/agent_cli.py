@@ -788,8 +788,10 @@ def _build_tools(workspace_root: str):
         return result
 
     @tool
-    def respond(message: str) -> dict:
+    def respond(message: str = "") -> dict:
         """Send a text response to the user. Use this for questions, explanations, or when no file operation is needed."""
+        if not message:
+            return {"success": False, "error": "No message provided"}
         if _debug_enabled():
             print(f"[AGENT_CLI_DEBUG] respond: {message[:100]}...")
         return {"success": True, "message": message}
