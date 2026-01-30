@@ -6,10 +6,11 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Footer, Input, Static
 from textual.worker import Worker, get_current_worker
 
 from forge.widgets.chat_display import ChatDisplay
+from forge.widgets.file_autocomplete import FileInput
 from forge.widgets.status_bar import StatusBar
 
 
@@ -53,7 +54,6 @@ class ForgeApp(App):
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
-        yield Header()
         yield StatusBar(
             workspace=self.workspace,
             model=self.model,
@@ -63,15 +63,18 @@ class ForgeApp(App):
             ChatDisplay(id="chat"),
             id="chat-container",
         )
-        yield Input(placeholder="Enter your prompt...", id="prompt-input")
+        yield FileInput(
+            workspace=self.workspace,
+            placeholder="Enter your prompt... (@ for files)",
+            id="prompt-input",
+        )
         yield Footer()
 
     def on_mount(self) -> None:
         """Focus the input on mount."""
-        self.query_one("#prompt-input", Input).focus()
+        self.query_one("#prompt-input", FileInput).focus()
         self.query_one("#chat", ChatDisplay).write(
-            f"[dim]Forge ready. Workspace: {self.workspace}, Model: {self.model}[/dim]\n"
-            "[dim]Type a prompt and press Ctrl+Enter to submit. Ctrl+C to quit.[/dim]\n"
+            "[dim]Ready. Ctrl+Enter to submit, @ for file completion.[/dim]\n"
         )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -208,7 +211,7 @@ class ForgeApp(App):
             )
             if result.returncode == 0 and result.stdout:
                 text = result.stdout.strip()
-                prompt_input = self.query_one("#prompt-input", Input)
+                prompt_input = self.query_one("#prompt-input", FileInput)
                 prompt_input.value = prompt_input.value + text
                 self.notify(f"Pasted {len(text)} chars")
             else:
@@ -237,7 +240,7 @@ class ForgeApp(App):
             return
         if self.history_index > 0:
             self.history_index -= 1
-            prompt_input = self.query_one("#prompt-input", Input)
+            prompt_input = self.query_one("#prompt-input", FileInput)
             prompt_input.value = self.history[self.history_index]
 
     def action_history_next(self) -> None:
@@ -246,9 +249,9 @@ class ForgeApp(App):
             return
         if self.history_index < len(self.history) - 1:
             self.history_index += 1
-            prompt_input = self.query_one("#prompt-input", Input)
+            prompt_input = self.query_one("#prompt-input", FileInput)
             prompt_input.value = self.history[self.history_index]
         elif self.history_index == len(self.history) - 1:
             self.history_index = len(self.history)
-            prompt_input = self.query_one("#prompt-input", Input)
+            prompt_input = self.query_one("#prompt-input", FileInput)
             prompt_input.value = ""
