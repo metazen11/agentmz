@@ -139,6 +139,138 @@ def _trace_log(label: str, payload: dict) -> None:
     print(json.dumps(payload, indent=2))
 
 
+def _log_responses_enabled() -> bool:
+    return os.environ.get("AGENT_CLI_LOG_RESPONSES", "").lower() in {"1", "true", "yes"}
+
+
+def _get_log_dir() -> str:
+    return os.environ.get("AGENT_CLI_LOG_DIR", "logs")
+
+
+def _extract_token_usage(response) -> dict:
+    """Extract token usage from Ollama response metadata."""
+    usage = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    }
+    # LangChain ChatOllama puts Ollama stats in response_metadata
+    meta = getattr(response, "response_metadata", {}) or {}
+    if meta:
+        usage["prompt_tokens"] = meta.get("prompt_eval_count", 0)
+        usage["completion_tokens"] = meta.get("eval_count", 0)
+        usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+        # Additional Ollama stats
+        usage["total_duration_ms"] = meta.get("total_duration", 0) // 1_000_000
+        usage["eval_duration_ms"] = meta.get("eval_duration", 0) // 1_000_000
+    return usage
+
+
+def _truncate_tool_result(content: str, max_chars: int = 500) -> str:
+    """Truncate long tool results to save context space."""
+    if len(content) <= max_chars:
+        return content
+    return content[:max_chars] + f"... [truncated, {len(content)} chars total]"
+
+
+def _get_max_context_messages() -> int:
+    """Get max messages to keep in context (0 = unlimited)."""
+    return int(os.environ.get("AGENT_CLI_MAX_CONTEXT_MESSAGES", "0") or "0")
+
+
+def _get_truncate_tool_results() -> int:
+    """Get max chars for tool results (0 = no truncation)."""
+    return int(os.environ.get("AGENT_CLI_TRUNCATE_TOOL_RESULTS", "500") or "500")
+
+
+def _fresh_context_enabled() -> bool:
+    """Check if fresh context mode is enabled (reset after successful tool)."""
+    return os.environ.get("AGENT_CLI_FRESH_CONTEXT", "1").lower() in {"1", "true", "yes"}
+
+
+def _is_task_complete(tool_name: str, result: Any) -> bool:
+    """Check if a tool result indicates the task is complete."""
+    # File operations that indicate completion
+    completion_tools = {"write_file", "apply_patch", "delete_file", "move_file", "copy_file"}
+    if tool_name not in completion_tools:
+        return False
+
+    # Check for success
+    if isinstance(result, dict):
+        return result.get("success", False)
+    if isinstance(result, str):
+        return "success" in result.lower() and "true" in result.lower()
+    return False
+
+
+def _log_response(
+    label: str,
+    model: str,
+    prompt: str,
+    response_content: str,
+    tool_calls: list,
+    iteration: int,
+    extra: Optional[dict] = None,
+    token_usage: Optional[dict] = None,
+) -> Optional[str]:
+    """
+    Write LLM response to a timestamped JSON file for post-analysis.
+
+    Returns the file path if written, None otherwise.
+    """
+    if not _log_responses_enabled():
+        return None
+
+    from datetime import datetime
+
+    log_dir = _get_log_dir()
+    os.makedirs(log_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    # Sanitize model name for filename
+    model_slug = re.sub(r"[^a-zA-Z0-9_-]", "-", model)
+    filename = f"{timestamp}_{model_slug}_{label}.json"
+    filepath = os.path.join(log_dir, filename)
+
+    payload = {
+        "timestamp": datetime.now().isoformat(),
+        "label": label,
+        "model": model,
+        "iteration": iteration,
+        "prompt": prompt,
+        "response": {
+            "content": response_content,
+            "tool_calls": tool_calls,
+        },
+        "token_usage": token_usage or {},
+    }
+    if extra:
+        payload["extra"] = extra
+
+    try:
+        with open(filepath, "w") as f:
+            json.dump(payload, f, indent=2)
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] logged_response {filepath}")
+        return filepath
+    except Exception as e:
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] log_response_error {e}")
+        return None
+
+
+def _is_placeholder_content(content: str) -> bool:
+    """Check if content is placeholder/template text that should be rejected."""
+    if not content or not isinstance(content, str):
+        return True
+    stripped = content.strip()
+    # Reject obvious placeholders
+    placeholders = {"...", "…", "<content>", "[content]", "your code here", "TODO"}
+    if stripped in placeholders or len(stripped) < 10:
+        return True
+    return False
+
+
 def _extract_tool_calls_from_text(text: str) -> list[dict]:
     if not text:
         return []
@@ -159,17 +291,28 @@ def _extract_tool_calls_from_text(text: str) -> list[dict]:
         if isinstance(data, dict):
             name = data.get("name")
             args = data.get("arguments") or data.get("args") or {}
+            # Validate write_file/apply_patch have real content
+            if name in ("write_file", "apply_patch"):
+                content = args.get("content") or args.get("patch") or ""
+                if _is_placeholder_content(content):
+                    continue  # Skip invalid tool calls
             if name:
                 calls.append({"name": name, "args": args})
         elif isinstance(data, list):
             for item in data:
                 if isinstance(item, dict) and item.get("name"):
-                    calls.append({"name": item.get("name"), "args": item.get("arguments") or item.get("args") or {}})
+                    item_args = item.get("arguments") or item.get("args") or {}
+                    item_name = item.get("name")
+                    if item_name in ("write_file", "apply_patch"):
+                        content = item_args.get("content") or item_args.get("patch") or ""
+                        if _is_placeholder_content(content):
+                            continue
+                    calls.append({"name": item_name, "args": item_args})
     return calls
 
 
 def _resolve_defaults(env: Dict[str, str]) -> dict:
-    model = env.get("AGENT_CLI_MODEL") or env.get("AGENT_MODEL") or "qwen3:0.6b"
+    model = env.get("AGENT_CLI_MODEL") or env.get("AGENT_MODEL") or "gemma3:4b"
     base_url = (
         env.get("AGENT_CLI_OLLAMA_BASE")
         or env.get("OLLAMA_API_BASE_LOCAL")
@@ -644,6 +787,13 @@ def _build_tools(workspace_root: str):
             print(f"[AGENT_CLI_DEBUG] run_command {command} -> {result['returncode']}")
         return result
 
+    @tool
+    def respond(message: str) -> dict:
+        """Send a text response to the user. Use this for questions, explanations, or when no file operation is needed."""
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] respond: {message[:100]}...")
+        return {"success": True, "message": message}
+
     return [
         list_files,
         glob,
@@ -658,6 +808,7 @@ def _build_tools(workspace_root: str):
         list_tree,
         grep,
         run_command,
+        respond,
     ]
 
 
@@ -670,16 +821,19 @@ def _run_tool_fallback(
     invoke_timeout: float = 120.0,
     invoke_retries: int = 2,
     retry_backoff: float = 5.0,
+    original_prompt: str = "",
 ) -> str:
     debug = _debug_enabled()
     debug_payload = _debug_payload_enabled()
     trace = _trace_enabled()
+    log_responses = _log_responses_enabled()
     tool_map = {t.name: t for t in tools}
+    model_name = getattr(llm, "model", "unknown")
 
-    for _ in range(max_iters):
+    for iteration in range(max_iters):
         if debug_payload:
             payload = {
-                "model": getattr(llm, "model", ""),
+                "model": model_name,
                 "base_url": getattr(llm, "base_url", ""),
                 "messages": _serialize_messages(messages),
                 "tools": _tool_debug_summary(tools, include_schema=True),
@@ -687,7 +841,7 @@ def _run_tool_fallback(
             _debug_log(payload)
         if trace:
             _trace_log("request", {
-                "model": getattr(llm, "model", ""),
+                "model": model_name,
                 "base_url": getattr(llm, "base_url", ""),
                 "messages": _serialize_messages(messages),
                 "tools": _tool_debug_summary(tools, include_schema=False),
@@ -706,11 +860,31 @@ def _run_tool_fallback(
                 print("[AGENT_CLI_DEBUG] request_exception", exc)
             raise
         tool_calls = getattr(response, "tool_calls", None) or []
+
+        # Extract and log token usage
+        token_usage = _extract_token_usage(response)
+        if token_usage.get("total_tokens", 0) > 0:
+            print(f"[TOKENS] prompt={token_usage['prompt_tokens']} completion={token_usage['completion_tokens']} total={token_usage['total_tokens']}")
+
         if trace:
             _trace_log("response", {
                 "content": response.content,
                 "tool_calls": tool_calls,
+                "token_usage": token_usage,
             })
+
+        # Log response to file for post-analysis
+        if log_responses:
+            _log_response(
+                label="response",
+                model=model_name,
+                prompt=original_prompt,
+                response_content=response.content or "",
+                tool_calls=tool_calls,
+                iteration=iteration,
+                token_usage=token_usage,
+            )
+
         if debug and tool_calls:
             print(f"[LC] tool_calls: {tool_calls}")
         if not tool_calls and fallback_parser:
@@ -719,11 +893,18 @@ def _run_tool_fallback(
                 tool_calls = parsed
                 if debug:
                     print(f"[AGENT_CLI_DEBUG] parsed_tool_calls: {tool_calls}")
+            elif debug and response.content and "{" in response.content:
+                print("[AGENT_CLI_DEBUG] fallback_parser rejected (placeholder content or invalid JSON)")
         if not tool_calls:
             if debug:
                 print("[AGENT_CLI_DEBUG] final_response")
                 print(response.content or "")
             return response.content or ""
+
+        # Get truncation setting
+        truncate_limit = _get_truncate_tool_results()
+        fresh_context = _fresh_context_enabled()
+        task_completed = False
 
         for call in tool_calls:
             name = call.get("name")
@@ -736,7 +917,27 @@ def _run_tool_fallback(
                 result = tool_fn.invoke(args)
             except Exception as exc:
                 result = {"success": False, "error": str(exc)}
-            messages.append(ToolMessage(content=str(result), tool_call_id=name or "tool"))
+
+            # Check if task is complete (successful file write, etc.)
+            if _is_task_complete(name, result):
+                task_completed = True
+                if debug:
+                    print(f"[AGENT_CLI_DEBUG] task_complete tool={name}")
+
+            # Truncate long tool results to save context space
+            result_str = str(result)
+            if truncate_limit > 0:
+                result_str = _truncate_tool_result(result_str, truncate_limit)
+
+            messages.append(ToolMessage(content=result_str, tool_call_id=name or "tool"))
+
+        # Fresh context mode: if task completed, return early instead of continuing loop
+        if fresh_context and task_completed:
+            summary = f"Task completed successfully. Last action: {name}"
+            if debug:
+                print(f"[AGENT_CLI_DEBUG] fresh_context_exit: {summary}")
+            return summary
+
     return "Max iterations reached without final response."
 
 
@@ -836,15 +1037,49 @@ def _invoke_with_timeout(llm, messages, timeout: float):
         return future.result(timeout=timeout)
 
 
+def _spinner_enabled() -> bool:
+    """Check if spinner/progress indicator is enabled."""
+    # Disabled by default; enable with AGENT_CLI_SPINNER=1
+    return os.environ.get("AGENT_CLI_SPINNER", "1").lower() in {"1", "true", "yes"}
+
+
 def _invoke_with_retry(
     llm, messages, timeout: float, max_retries: int = 2, backoff: float = 5.0
 ):
-    """Invoke LLM with timeout and exponential backoff retry on timeout errors."""
+    """Invoke LLM with timeout and exponential backoff retry on timeout errors.
+
+    After all retries are exhausted, attempts to heal Ollama via the main API
+    and tries one final time.
+    """
     debug = _debug_enabled()
+    show_spinner = _spinner_enabled()
+    model_name = getattr(llm, "model", "LLM")
     last_exc = None
+    healed = False
+
     for attempt in range(max_retries + 1):
+        if show_spinner:
+            print(f"[WAITING] {model_name} responding...", end="", flush=True)
+
         try:
-            return _invoke_with_timeout(llm, messages, timeout)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(llm.invoke, messages)
+                start_time = time.time()
+                while True:
+                    try:
+                        result = future.result(timeout=5.0)  # Check every 5s
+                        if show_spinner:
+                            elapsed = time.time() - start_time
+                            print(f" done ({elapsed:.1f}s)")
+                        return result
+                    except concurrent.futures.TimeoutError:
+                        elapsed = time.time() - start_time
+                        if elapsed >= timeout:
+                            if show_spinner:
+                                print(f" timeout after {elapsed:.1f}s")
+                            raise
+                        if show_spinner:
+                            print(f" {elapsed:.0f}s...", end="", flush=True)
         except concurrent.futures.TimeoutError as exc:
             last_exc = exc
             if attempt < max_retries:
@@ -855,6 +1090,41 @@ def _invoke_with_retry(
             else:
                 if debug:
                     print(f"[AGENT_CLI_DEBUG] timeout_exhausted retries={max_retries} timeout={timeout}s")
+
+    # All retries exhausted - try to heal Ollama and attempt one final time
+    if not healed:
+        print("[AGENT_CLI] Retries exhausted, attempting to heal Ollama...")
+        if _trigger_ollama_heal():
+            healed = True
+            print("[AGENT_CLI] Ollama healed, trying one more time...")
+            if show_spinner:
+                print(f"[WAITING] {model_name} responding (post-heal)...", end="", flush=True)
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(llm.invoke, messages)
+                    start_time = time.time()
+                    while True:
+                        try:
+                            result = future.result(timeout=5.0)
+                            if show_spinner:
+                                elapsed = time.time() - start_time
+                                print(f" done ({elapsed:.1f}s)")
+                            return result
+                        except concurrent.futures.TimeoutError:
+                            elapsed = time.time() - start_time
+                            if elapsed >= timeout:
+                                if show_spinner:
+                                    print(f" timeout after {elapsed:.1f}s (post-heal)")
+                                raise
+                            if show_spinner:
+                                print(f" {elapsed:.0f}s...", end="", flush=True)
+            except concurrent.futures.TimeoutError as exc:
+                last_exc = exc
+                if debug:
+                    print("[AGENT_CLI_DEBUG] timeout_after_heal")
+        else:
+            print("[AGENT_CLI] Ollama heal not available or failed")
+
     raise last_exc
 
 
@@ -888,11 +1158,9 @@ def _load_coding_principles_text() -> str:
 def _coding_principles_message() -> str:
     principles = _load_coding_principles_text()
     return (
-        "You are Forge, a system-agnostic coding agent. Your objective is to write the best code you can: "
-        "prioritize clarity, correctness, and maintainability; catch issues early and reuse abstractions; "
-        "be proactive about error handling, testing, and documenting decisions before you invoke tools. "
-        "Refer to the coding principles below:\n"
-        f"{principles}"
+        "You are Forge. Think step-by-step: (1) understand the task, (2) plan your approach, "
+        "(3) execute one tool at a time. Keep responses minimal - output tool calls, not prose. "
+        f"Principles:\n{principles}"
     )
 
 
@@ -910,14 +1178,8 @@ def _run_loop(
     system_messages = [
         SystemMessage(content=_coding_principles_message()),
         SystemMessage(content=(
-            "You MUST use tools for all filesystem operations. "
-            "Use list_files, list_tree, or glob to discover files. "
-            "Use read_file to inspect contents. "
-            "Use write_file to create new files. "
-            "Use apply_patch to edit existing files. "
-            "Use mkdir, move_file, copy_file, delete_file, stat_path for filesystem changes. "
-            "Use run_command only for simple shell commands. "
-            "When generating HTML, output valid HTML5 with proper tags and structure."
+            "Use tools for all interactions: read_file to read, write_file to create, apply_patch to edit, "
+            "respond to answer questions or explain things. Always use a tool - never output bare text."
         )),
     ]
     messages = system_messages + [HumanMessage(content=prompt)]
@@ -930,6 +1192,7 @@ def _run_loop(
         invoke_timeout=invoke_timeout,
         invoke_retries=invoke_retries,
         retry_backoff=retry_backoff,
+        original_prompt=prompt,
     )
 
 
@@ -1008,6 +1271,8 @@ def main() -> int:
             print(f"[AGENT_CLI_DEBUG] warming_up model={model}")
         _warmup_ollama(base_url, model, defaults["timeout"], defaults["ssl_verify"])
 
+    # Use invoke_timeout for HTTP client so both timeouts are synced
+    http_timeout = args.invoke_timeout or defaults["invoke_timeout"]
     try:
         client = _build_client(
         model,
@@ -1015,7 +1280,7 @@ def main() -> int:
         defaults["ssl_verify"],
         defaults["temperature"],
         defaults["seed"],
-        defaults["timeout"],
+        http_timeout,
     )
     except RuntimeError as exc:
         print(str(exc))
@@ -1109,6 +1374,7 @@ def main() -> int:
                             invoke_timeout=args.invoke_timeout,
                             invoke_retries=args.invoke_retries,
                             retry_backoff=defaults["retry_backoff"],
+                            original_prompt=prompt,
                         )
                         print(followup)
                         return 0
@@ -1139,7 +1405,7 @@ def main() -> int:
                 defaults["ssl_verify"],
                 defaults["temperature"],
                 defaults["seed"],
-                defaults["timeout"],
+                http_timeout,
             )
             fallback_response = _run_text_fallback(
                 fallback_llm,

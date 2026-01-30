@@ -19,6 +19,7 @@ class ForgeApp(App):
     TITLE = "Forge"
 
     BINDINGS = [
+        Binding("ctrl+enter", "submit", "Submit", show=True),
         Binding("ctrl+c", "quit", "Quit", show=True),
         Binding("ctrl+l", "clear", "Clear", show=True),
         Binding("escape", "cancel", "Cancel", show=False),
@@ -64,7 +65,7 @@ class ForgeApp(App):
         self.query_one("#prompt-input", Input).focus()
         self.query_one("#chat", ChatDisplay).write(
             f"[dim]Forge ready. Workspace: {self.workspace}, Model: {self.model}[/dim]\n"
-            "[dim]Type a prompt and press Enter. Ctrl+C to quit.[/dim]\n"
+            "[dim]Type a prompt and press Ctrl+Enter to submit. Ctrl+C to quit.[/dim]\n"
         )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -145,6 +146,11 @@ class ForgeApp(App):
         finally:
             status.set_running(False)
             status.set_status("")
+
+    def action_submit(self) -> None:
+        """Submit the current prompt (handled by Input widget)."""
+        # This is here to show the binding in footer; actual submit is handled by Input.Submitted
+        pass
 
     def action_clear(self) -> None:
         """Clear the chat display."""

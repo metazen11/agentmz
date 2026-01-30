@@ -118,6 +118,9 @@ def _run_fallback_with_results(
                         results.append(f"Found {result.get('count', 0)} matches:")
                         for m in result.get("matches", [])[:10]:
                             results.append(f"  {m.get('file')}:{m.get('line')}: {m.get('text', '')[:60]}")
+                    elif "message" in result:
+                        # respond tool - display the message directly
+                        results.append(result["message"])
                     else:
                         results.append(f"[{name}] OK")
                 else:
