@@ -46,6 +46,7 @@ from routers import (
     logs,
     help_agents,
     terminal,
+    ollama,
 )
 
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
@@ -58,6 +59,7 @@ app.include_router(task_runs.router, tags=["task_runs"])
 app.include_router(integrations.router, tags=["integrations"])
 app.include_router(workspace.router, tags=["workspace"])
 app.include_router(operations.router, tags=["operations"])
+app.include_router(ollama.router, tags=["ollama"])  # Register before logs (which has /ollama proxy)
 app.include_router(logs.router, tags=["logs"])
 app.include_router(help_agents.router, tags=["help"])
 app.include_router(terminal.router, tags=["terminal"])

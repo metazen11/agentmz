@@ -2,10 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Security: update OS packages, install git for /projects/{id}/git/status
+# Security: update OS packages, install git and openssh-client
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends git openssh-client curl \
     && rm -rf /var/lib/apt/lists/* \
     && git config --global --add safe.directory '*'
 
@@ -13,7 +13,20 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy SSH key generation script
+COPY docker/scripts/generate-ssh-keys.sh /opt/generate-ssh-keys.sh
+RUN chmod +x /opt/generate-ssh-keys.sh
+
 EXPOSE 8002
 
+# Create entrypoint that generates SSH keys then starts uvicorn
+RUN echo '#!/bin/bash\n\
+# Generate SSH keys if needed (for ollama restart service)\n\
+/opt/generate-ssh-keys.sh\n\
+\n\
+# Start uvicorn\n\
+exec uvicorn main:app --host 0.0.0.0 --port 8002\n\
+' > /opt/entrypoint.sh && chmod +x /opt/entrypoint.sh
+
 # Code mounted at /app via docker-compose volume
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+ENTRYPOINT ["/opt/entrypoint.sh"]

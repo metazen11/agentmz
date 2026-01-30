@@ -1,34 +1,69 @@
-# Custom Ollama image with optimized model initialization
+# Custom Ollama image with optimized model initialization and SSH support
 FROM ollama/ollama:latest
 
-# Security: update OS packages (if apt available)
-RUN if command -v apt-get > /dev/null; then apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*; fi
+# Security: update OS packages and install SSH server
+RUN if command -v apt-get > /dev/null; then \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y openssh-server curl && \
+    mkdir -p /var/run/sshd /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    rm -rf /var/lib/apt/lists/*; \
+fi
+
+# Configure SSH for key-only authentication
+RUN echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config && \
+    echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config && \
+    echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
 
 # Copy the Modelfile and init script
 COPY docker/Modelfile.qwen-coder-optimized /opt/Modelfile
 COPY docker/ollama-init.sh /opt/ollama-init.sh
 
-# Make init script executable
-RUN chmod +x /opt/ollama-init.sh
+# Copy SSH and restart scripts
+COPY docker/scripts/ssh-init-ollama.sh /opt/ssh-init.sh
+COPY docker/scripts/restart-ollama.sh /opt/restart-ollama.sh
 
-# Create a wrapper entrypoint that runs init after Ollama starts
+# Make all scripts executable
+RUN chmod +x /opt/ollama-init.sh /opt/ssh-init.sh /opt/restart-ollama.sh
+
+# Create a wrapper entrypoint that runs SSH init and Ollama with restart support
 RUN echo '#!/bin/bash\n\
-# Start Ollama server in background\n\
-ollama serve &\n\
-OLLAMA_PID=$!\n\
+# Initialize SSH (waits for key, starts sshd)\n\
+/opt/ssh-init.sh\n\
 \n\
-# Wait for Ollama to be ready\n\
-echo "Waiting for Ollama to start..."\n\
-until curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do\n\
-    sleep 1\n\
+# Flag to track if init has run\n\
+INIT_DONE=0\n\
+\n\
+# Keep restarting ollama if it exits (allows SSH restart)\n\
+while true; do\n\
+    echo "[ENTRYPOINT] Starting Ollama..."\n\
+    ollama serve &\n\
+    OLLAMA_PID=$!\n\
+    echo "[ENTRYPOINT] Ollama PID: $OLLAMA_PID"\n\
+\n\
+    # Wait for Ollama to be ready\n\
+    echo "[ENTRYPOINT] Waiting for Ollama API..."\n\
+    for i in $(seq 1 60); do\n\
+        if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then\n\
+            echo "[ENTRYPOINT] Ollama is ready"\n\
+            break\n\
+        fi\n\
+        sleep 1\n\
+    done\n\
+\n\
+    # Run init script only on first start\n\
+    if [ $INIT_DONE -eq 0 ]; then\n\
+        /opt/ollama-init.sh &\n\
+        INIT_DONE=1\n\
+    fi\n\
+\n\
+    # Wait for Ollama to exit\n\
+    wait $OLLAMA_PID\n\
+    EXIT_CODE=$?\n\
+    echo "[ENTRYPOINT] Ollama exited with code $EXIT_CODE, restarting in 2s..."\n\
+    sleep 2\n\
 done\n\
-echo "Ollama is ready"\n\
-\n\
-# Run init script (pull/create models)\n\
-/opt/ollama-init.sh &\n\
-\n\
-# Wait for Ollama server\n\
-wait $OLLAMA_PID\n\
 ' > /opt/entrypoint.sh && chmod +x /opt/entrypoint.sh
 
 ENTRYPOINT ["/opt/entrypoint.sh"]

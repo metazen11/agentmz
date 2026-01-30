@@ -21,7 +21,9 @@ services:
 
   # Ollama LLM - shares model cache with root Ollama
   ollama:
-    image: ollama/ollama:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ollama
     container_name: wfhub-v2-ollama
     hostname: wfhub-v2-ollama
     env_file:
@@ -38,6 +40,9 @@ services:
       - OLLAMA_CONTEXT_LENGTH=32768
       # VRAM allocation - let Ollama manage
       - OLLAMA_MAX_VRAM=3758096384        # 3.5GB in bytes
+      # SSH key configuration
+      - SSH_KEY_DIR=/ssh_keys
+      - SSH_KEY_TYPE=ed25519
     ports:
       - "11435:11434"
     deploy:
@@ -50,9 +55,8 @@ services:
     volumes:
       # Share root Ollama's model cache - no re-downloading
       - wfhub_ollama_data:/root/.ollama
-      # Mount init scripts and Modelfile
-      - ./ollama-init.sh:/opt/ollama-init.sh:ro
-      - ./Modelfile.qwen-coder-optimized:/opt/Modelfile:ro
+      # SSH keys volume (read-only - main-api generates keys)
+      - wfhub_ssh_keys:/ssh_keys:ro
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 60s
@@ -77,12 +81,19 @@ services:
       - OLLAMA_PROXY_TARGET=http://wfhub-v2-ollama:11434
       - PROJECT_ROOT=/app  # For [%root%] path variable (container path)
       - HOST_PROJECT_ROOT=${PROJECT_ROOT}  # Host path for VS Code URLs
+      # SSH configuration for ollama restart service
+      - SSH_KEY_DIR=/ssh_keys
+      - SSH_KEY_TYPE=ed25519
+      - OLLAMA_SSH_HOST=wfhub-v2-ollama
+      - OLLAMA_SSH_PORT=22
+      - OLLAMA_SSH_USER=root
     ports:
       - "8002:8002"
     volumes:
       - ..:/app  # Mount v2 root - code changes reflect immediately
       - ../workspaces:/workspaces
       - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for log streaming
+      - wfhub_ssh_keys:/ssh_keys:rw  # SSH keys volume (read-write - generates keys)
     depends_on:
       db:
         condition: service_healthy
@@ -143,3 +154,5 @@ volumes:
     external: true
   wfhub_v2_caddy_data:
   wfhub_v2_caddy_config:
+  # Shared SSH keys for container management
+  wfhub_ssh_keys:

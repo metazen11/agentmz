@@ -6,15 +6,42 @@ Defaults come from .env. Example:
   python scripts/agent_cli.py --prompt "List files in /workspaces/poc"
 """
 import argparse
+import concurrent.futures
 import json
 import os
 import re
 import sys
+import time
+from typing import Any, Dict, Optional
 
 try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = None
+
+
+def _truthy(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _int_env(value: Optional[str], fallback: int) -> int:
+    if value is None or value == "":
+        return fallback
+    try:
+        return int(value)
+    except ValueError:
+        return fallback
+
+
+def _float_env(value: Optional[str], fallback: Optional[float]) -> Optional[float]:
+    if value is None or value == "":
+        return fallback
+    try:
+        return float(value)
+    except ValueError:
+        return fallback
 
 try:
     from langchain_ollama import ChatOllama
@@ -33,6 +60,22 @@ except Exception:  # pragma: no cover - import guard
     tool = None
     _create_agent = None
     _create_react_agent = None
+    BaseMessage = HumanMessage = SystemMessage = ToolMessage = object
+
+try:
+    import requests
+    from requests.exceptions import RequestException
+except ImportError:
+    requests = None
+    RequestException = Exception
+
+SCRIPT_DIR = os.path.dirname(__file__)
+CODING_PRINCIPLES_PATH = os.path.normpath(os.path.join(SCRIPT_DIR, os.pardir, "coding_principles.md"))
+
+try:
+    from ollama._types import ResponseError
+except Exception:
+    ResponseError = None
 
 
 def _load_env() -> None:
@@ -47,6 +90,10 @@ def _debug_enabled() -> bool:
 
 def _debug_payload_enabled() -> bool:
     return os.environ.get("AGENT_CLI_DEBUG_PAYLOAD", "").lower() in {"1", "true", "yes"}
+
+
+def _trace_enabled() -> bool:
+    return os.environ.get("AGENT_CLI_TRACE", "").lower() in {"1", "true", "yes"}
 
 
 def _serialize_messages(messages: list[BaseMessage]) -> list[dict]:
@@ -87,6 +134,11 @@ def _debug_log(payload: dict) -> None:
     print(json.dumps(payload, indent=2))
 
 
+def _trace_log(label: str, payload: dict) -> None:
+    print(f"[AGENT_CLI_TRACE] {label}")
+    print(json.dumps(payload, indent=2))
+
+
 def _extract_tool_calls_from_text(text: str) -> list[dict]:
     if not text:
         return []
@@ -116,25 +168,7 @@ def _extract_tool_calls_from_text(text: str) -> list[dict]:
     return calls
 
 
-def _resolve_defaults(env: dict) -> dict:
-    def _truthy(value: str | None) -> bool:
-        if value is None:
-            return False
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-
-    def _bool_with_default(value: str | None, default: bool) -> bool:
-        if value is None or value == "":
-            return default
-        return _truthy(value)
-
-    def _int_or(value: str | None, fallback: int) -> int:
-        if value is None or value == "":
-            return fallback
-        try:
-            return int(value)
-        except ValueError:
-            return fallback
-
+def _resolve_defaults(env: Dict[str, str]) -> dict:
     model = env.get("AGENT_CLI_MODEL") or env.get("AGENT_MODEL") or "qwen3:0.6b"
     base_url = (
         env.get("AGENT_CLI_OLLAMA_BASE")
@@ -145,9 +179,21 @@ def _resolve_defaults(env: dict) -> dict:
     workspace = env.get("AGENT_CLI_WORKSPACE") or env.get("DEFAULT_WORKSPACE") or "poc"
     project_name = env.get("AGENT_CLI_PROJECT_NAME", "")
     use_langgraph = _truthy(env.get("AGENT_CLI_USE_LANGGRAPH"))
-    max_iters = _int_or(env.get("AGENT_CLI_MAX_ITERS"), 6)
-    ssl_verify = _bool_with_default(env.get("AGENT_CLI_SSL_VERIFY"), True)
+    max_iters = _int_env(env.get("AGENT_CLI_MAX_ITERS"), 6)
+    if env.get("AGENT_CLI_SSL_VERIFY") in {None, ""}:
+        ssl_verify = True
+    else:
+        ssl_verify = _truthy(env.get("AGENT_CLI_SSL_VERIFY"))
     tool_choice = env.get("AGENT_CLI_TOOL_CHOICE", "").strip() or "auto"
+    temperature = _float_env(env.get("AGENT_CLI_TEMPERATURE"), None)
+    seed = _int_env(env.get("AGENT_CLI_SEED"), 0)
+    if env.get("AGENT_CLI_SEED") in {None, ""}:
+        seed = None
+    timeout = _float_env(env.get("OLLAMA_TIMEOUT"), 60.0)
+    invoke_timeout = _float_env(env.get("AGENT_CLI_INVOKE_TIMEOUT"), 120.0)
+    invoke_retries = _int_env(env.get("AGENT_CLI_INVOKE_RETRIES"), 2)
+    retry_backoff = _float_env(env.get("AGENT_CLI_RETRY_BACKOFF"), 5.0)
+    warmup = _truthy(env.get("AGENT_CLI_WARMUP"))
     return {
         "model": model,
         "base_url": base_url,
@@ -157,21 +203,36 @@ def _resolve_defaults(env: dict) -> dict:
         "max_iters": max_iters,
         "ssl_verify": ssl_verify,
         "tool_choice": tool_choice,
+        "temperature": temperature,
+        "seed": seed,
+        "timeout": timeout,
+        "invoke_timeout": invoke_timeout,
+        "invoke_retries": invoke_retries,
+        "retry_backoff": retry_backoff,
+        "warmup": warmup,
     }
 
 
-def _build_client(model: str, base_url: str, ssl_verify: bool):
+def _build_client(model: str, base_url: str, ssl_verify: bool, temperature: float | None, seed: int | None, timeout: float | None):
     if ChatOllama is None:
         raise RuntimeError(
             "langchain-ollama is required. Install with: pip install langchain-ollama"
         )
     client_kwargs = {"verify": ssl_verify}
+    if timeout:
+        client_kwargs["timeout"] = timeout
+    model_kwargs = {}
+    if temperature is not None:
+        model_kwargs["temperature"] = temperature
+    if seed is not None:
+        model_kwargs["seed"] = seed
     return ChatOllama(
         model=model,
         base_url=base_url,
         client_kwargs=client_kwargs,
         sync_client_kwargs=client_kwargs,
         async_client_kwargs=client_kwargs,
+        **model_kwargs,
     )
 
 
@@ -600,9 +661,19 @@ def _build_tools(workspace_root: str):
     ]
 
 
-def _run_tool_fallback(llm, tools, messages: list[BaseMessage], max_iters: int, fallback_parser: bool) -> str:
+def _run_tool_fallback(
+    llm,
+    tools,
+    messages: list[BaseMessage],
+    max_iters: int,
+    fallback_parser: bool,
+    invoke_timeout: float = 120.0,
+    invoke_retries: int = 2,
+    retry_backoff: float = 5.0,
+) -> str:
     debug = _debug_enabled()
     debug_payload = _debug_payload_enabled()
+    trace = _trace_enabled()
     tool_map = {t.name: t for t in tools}
 
     for _ in range(max_iters):
@@ -614,8 +685,32 @@ def _run_tool_fallback(llm, tools, messages: list[BaseMessage], max_iters: int, 
                 "tools": _tool_debug_summary(tools, include_schema=True),
             }
             _debug_log(payload)
-        response = llm.invoke(messages)
+        if trace:
+            _trace_log("request", {
+                "model": getattr(llm, "model", ""),
+                "base_url": getattr(llm, "base_url", ""),
+                "messages": _serialize_messages(messages),
+                "tools": _tool_debug_summary(tools, include_schema=False),
+            })
+        try:
+            response = _invoke_with_retry(
+                llm, messages, invoke_timeout,
+                max_retries=invoke_retries, backoff=retry_backoff
+            )
+        except concurrent.futures.TimeoutError as exc:
+            if debug:
+                print(f"[AGENT_CLI_DEBUG] invoke_timeout {invoke_timeout}s after {invoke_retries} retries")
+            raise RuntimeError(f"LLM invoke timed out after {invoke_timeout}s (retries exhausted)") from exc
+        except Exception as exc:
+            if requests is not None and isinstance(exc, RequestException):
+                print("[AGENT_CLI_DEBUG] request_exception", exc)
+            raise
         tool_calls = getattr(response, "tool_calls", None) or []
+        if trace:
+            _trace_log("response", {
+                "content": response.content,
+                "tool_calls": tool_calls,
+            })
         if debug and tool_calls:
             print(f"[LC] tool_calls: {tool_calls}")
         if not tool_calls and fallback_parser:
@@ -645,9 +740,175 @@ def _run_tool_fallback(llm, tools, messages: list[BaseMessage], max_iters: int, 
     return "Max iterations reached without final response."
 
 
-def _run_loop(llm, tools, prompt: str, max_iters: int = 6, fallback_parser: bool = False) -> str:
+def _run_text_fallback(
+    llm,
+    tools,
+    prompt: str,
+    max_iters: int,
+) -> str:
     debug = _debug_enabled()
+    trace = _trace_enabled()
+    if debug:
+        print("[AGENT_CLI_DEBUG] text_fallback_start")
+    tool_map = {t.name: t for t in tools}
+    system_message = (
+        "Tools are unavailable in this environment. "
+        "Respond only by emitting JSON tool calls with `name` and `arguments`, "
+        "e.g. {\"name\":\"write_file\",\"arguments\":{\"path\":\"hello-world.html\",\"content\":\"<html>...</html>\"}}. "
+        "Do not add prose outside the JSON payload. "
+        "We will execute those commands locally on your behalf."
+    )
     messages = [
+        SystemMessage(content=system_message),
+        HumanMessage(content=prompt),
+    ]
+    if trace:
+        _trace_log("fallback_request", {
+            "model": getattr(llm, "model", ""),
+            "base_url": getattr(llm, "base_url", ""),
+            "messages": _serialize_messages(messages),
+        })
+    response = llm.invoke(messages)
+    content = response.content or ""
+    if trace:
+        _trace_log("fallback_response", {
+            "content": content,
+        })
+    tool_calls = _extract_tool_calls_from_text(content)
+    if not tool_calls:
+        return content
+    for call in tool_calls:
+        name = call.get("name")
+        args = call.get("args") or {}
+        tool_fn = tool_map.get(name)
+        if not tool_fn:
+            if debug:
+                print(f"[AGENT_CLI_DEBUG] fallback_unknown_tool: {name}")
+            continue
+        try:
+            result = tool_fn.invoke(args)
+        except Exception as exc:
+            result = {"success": False, "error": str(exc)}
+        if debug:
+            print(f"[AGENT_CLI_DEBUG] fallback_tool {name} -> {result}")
+    return content
+
+
+def _trigger_ollama_heal() -> bool:
+    heal_url = os.environ.get("OLLAMA_HEAL_URL")
+    if not heal_url or requests is None:
+        return False
+    try:
+        resp = requests.post(heal_url, timeout=5)
+        if resp.status_code < 400:
+            wait = float(os.environ.get("OLLAMA_HEAL_WAIT_SECS", "10"))
+            time.sleep(wait)
+            return True
+    except RequestException as exc:
+        print("[AGENT_CLI_DEBUG] ollama_heal_failed", exc)
+    return False
+
+
+def _check_ollama_service(base_url: str, timeout: float | None, verify: bool) -> bool:
+    if requests is None:
+        return True
+    candidates = ["", "api/health", "api/models", "api/system"]
+    for attempt in range(2):
+        for suffix in candidates:
+            target = base_url.rstrip("/")
+            if suffix:
+                target = f"{target}/{suffix.lstrip('/')}"
+            try:
+                resp = requests.get(target, timeout=timeout or 5, verify=verify)
+                if resp.status_code < 500:
+                    return True
+            except RequestException:
+                continue
+        if attempt == 0 and _trigger_ollama_heal():
+            continue
+        break
+    return False
+
+
+def _invoke_with_timeout(llm, messages, timeout: float):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(llm.invoke, messages)
+        return future.result(timeout=timeout)
+
+
+def _invoke_with_retry(
+    llm, messages, timeout: float, max_retries: int = 2, backoff: float = 5.0
+):
+    """Invoke LLM with timeout and exponential backoff retry on timeout errors."""
+    debug = _debug_enabled()
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            return _invoke_with_timeout(llm, messages, timeout)
+        except concurrent.futures.TimeoutError as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                wait = backoff * (2 ** attempt)
+                if debug:
+                    print(f"[AGENT_CLI_DEBUG] timeout_retry attempt={attempt+1}/{max_retries} wait={wait}s")
+                time.sleep(wait)
+            else:
+                if debug:
+                    print(f"[AGENT_CLI_DEBUG] timeout_exhausted retries={max_retries} timeout={timeout}s")
+    raise last_exc
+
+
+def _warmup_ollama(base_url: str, model: str, timeout: float, verify: bool) -> bool:
+    """Send a minimal request to warm up the Ollama connection and model loading."""
+    if requests is None:
+        return True
+    debug = _debug_enabled()
+    try:
+        target = f"{base_url.rstrip('/')}/api/generate"
+        payload = {"model": model, "prompt": "hi", "stream": False}
+        resp = requests.post(target, json=payload, timeout=timeout, verify=verify)
+        if debug:
+            print(f"[AGENT_CLI_DEBUG] warmup status={resp.status_code}")
+        return resp.status_code < 500
+    except RequestException as exc:
+        if debug:
+            print(f"[AGENT_CLI_DEBUG] warmup_failed {exc}")
+        return False
+
+
+def _load_coding_principles_text() -> str:
+    try:
+        with open(CODING_PRINCIPLES_PATH, "r", encoding="utf-8") as handle:
+            content = handle.read().strip()
+            return content if content else "(coding principles file is empty)"
+    except OSError:
+        return "(coding principles document unavailable)"
+
+
+def _coding_principles_message() -> str:
+    principles = _load_coding_principles_text()
+    return (
+        "You are Forge, a system-agnostic coding agent. Your objective is to write the best code you can: "
+        "prioritize clarity, correctness, and maintainability; catch issues early and reuse abstractions; "
+        "be proactive about error handling, testing, and documenting decisions before you invoke tools. "
+        "Refer to the coding principles below:\n"
+        f"{principles}"
+    )
+
+
+def _run_loop(
+    llm,
+    tools,
+    prompt: str,
+    max_iters: int = 6,
+    fallback_parser: bool = False,
+    invoke_timeout: float = 120.0,
+    invoke_retries: int = 2,
+    retry_backoff: float = 5.0,
+) -> str:
+    debug = _debug_enabled()
+    system_messages = [
+        SystemMessage(content=_coding_principles_message()),
         SystemMessage(content=(
             "You MUST use tools for all filesystem operations. "
             "Use list_files, list_tree, or glob to discover files. "
@@ -658,11 +919,18 @@ def _run_loop(llm, tools, prompt: str, max_iters: int = 6, fallback_parser: bool
             "Use run_command only for simple shell commands. "
             "When generating HTML, output valid HTML5 with proper tags and structure."
         )),
-        HumanMessage(content=prompt),
     ]
+    messages = system_messages + [HumanMessage(content=prompt)]
     if debug:
         print("[AGENT_CLI_DEBUG] starting_tool_loop")
-    return _run_tool_fallback(llm, tools, messages, max_iters=max_iters, fallback_parser=fallback_parser)
+    return _run_tool_fallback(
+        llm, tools, messages,
+        max_iters=max_iters,
+        fallback_parser=fallback_parser,
+        invoke_timeout=invoke_timeout,
+        invoke_retries=invoke_retries,
+        retry_backoff=retry_backoff,
+    )
 
 
 def _retention_cleanup(conn_string: str, days: int) -> None:
@@ -690,7 +958,8 @@ def main() -> int:
     _load_env()
     defaults = _resolve_defaults(os.environ)
     parser = argparse.ArgumentParser(description="Run a LangChain chat call against Ollama")
-    parser.add_argument("--prompt", required=True, help="Prompt to send to the model")
+    parser.add_argument("--prompt", help="Prompt to send to the model")
+    parser.add_argument("--prompt-file", help="Path to a file containing the prompt")
     parser.add_argument("--model", default=defaults["model"])
     parser.add_argument("--ollama", default=defaults["base_url"])
     parser.add_argument("--workspace", default=defaults["workspace"])
@@ -702,14 +971,52 @@ def main() -> int:
         help="Use LangGraph with persistence",
     )
     parser.add_argument("--max-iters", type=int, default=defaults["max_iters"])
+    parser.add_argument(
+        "--invoke-timeout",
+        type=float,
+        default=defaults["invoke_timeout"],
+        help="Timeout in seconds for each LLM invoke (default: 120)",
+    )
+    parser.add_argument(
+        "--invoke-retries",
+        type=int,
+        default=defaults["invoke_retries"],
+        help="Number of retries on timeout (default: 2)",
+    )
     args = parser.parse_args()
 
     model = args.model
     base_url = args.ollama.rstrip("/")
-    prompt = args.prompt
+    prompt = args.prompt or ""
+    if args.prompt_file:
+        try:
+            with open(args.prompt_file, "r", encoding="utf-8") as handle:
+                prompt = handle.read()
+        except OSError as exc:
+            print(f"Failed to read prompt file: {exc}")
+            return 1
+    if not prompt:
+        print("Prompt is required (use --prompt or --prompt-file)")
+        return 1
+
+    if not _check_ollama_service(base_url, defaults["timeout"], defaults["ssl_verify"]):
+        print(f"Ollama service unreachable at {base_url}; verify the server is running.")
+        return 1
+
+    if defaults["warmup"]:
+        if _debug_enabled():
+            print(f"[AGENT_CLI_DEBUG] warming_up model={model}")
+        _warmup_ollama(base_url, model, defaults["timeout"], defaults["ssl_verify"])
 
     try:
-        client = _build_client(model, base_url, defaults["ssl_verify"])
+        client = _build_client(
+        model,
+        base_url,
+        defaults["ssl_verify"],
+        defaults["temperature"],
+        defaults["seed"],
+        defaults["timeout"],
+    )
     except RuntimeError as exc:
         print(str(exc))
         return 1
@@ -748,6 +1055,13 @@ def main() -> int:
                 "configurable": {"thread_id": thread_id},
                 "metadata": {"created_at": datetime.now(UTC).isoformat()},
             }
+            if _trace_enabled():
+                _trace_log("langgraph_request", {
+                    "model": getattr(client, "model", ""),
+                    "base_url": getattr(client, "base_url", ""),
+                    "messages": _serialize_messages([HumanMessage(content=prompt)]),
+                    "thread_id": thread_id,
+                })
             if _debug_payload_enabled():
                 payload = {
                     "model": getattr(client, "model", ""),
@@ -761,6 +1075,10 @@ def main() -> int:
                 {"messages": [HumanMessage(content=prompt)]},
                 config=config,
             )
+            if _trace_enabled():
+                _trace_log("langgraph_response", {
+                    "messages": _serialize_messages(result.get("messages", [])),
+                })
             messages = result.get("messages", [])
             if _debug_enabled():
                 print("[AGENT_CLI_DEBUG] langgraph_messages")
@@ -788,6 +1106,9 @@ def main() -> int:
                             messages,
                             max_iters=max(1, args.max_iters - 1),
                             fallback_parser=fallback_parser,
+                            invoke_timeout=args.invoke_timeout,
+                            invoke_retries=args.invoke_retries,
+                            retry_backoff=defaults["retry_backoff"],
                         )
                         print(followup)
                         return 0
@@ -795,7 +1116,40 @@ def main() -> int:
             print(final)
             return 0
 
-    response = _run_loop(client, tools, prompt, max_iters=args.max_iters, fallback_parser=fallback_parser)
+    try:
+        response = _run_loop(
+            client, tools, prompt,
+            max_iters=args.max_iters,
+            fallback_parser=fallback_parser,
+            invoke_timeout=args.invoke_timeout,
+            invoke_retries=args.invoke_retries,
+            retry_backoff=defaults["retry_backoff"],
+        )
+    except Exception as exc:
+        if (
+            ResponseError is not None
+            and isinstance(exc, ResponseError)
+            and "does not support tools" in str(exc)
+        ):
+            if _debug_enabled():
+                print("[AGENT_CLI_DEBUG] tools unsupported; using textual fallback")
+            fallback_llm = _build_client(
+                model,
+                base_url,
+                defaults["ssl_verify"],
+                defaults["temperature"],
+                defaults["seed"],
+                defaults["timeout"],
+            )
+            fallback_response = _run_text_fallback(
+                fallback_llm,
+                tools,
+                prompt,
+                max_iters=args.max_iters,
+            )
+            print(fallback_response)
+            return 0
+        raise
     print(response)
     return 0
 

@@ -10,6 +10,9 @@ alembic>=1.13.0
 # Docker
 docker>=7.0.0
 
+# SSH client for remote container management
+asyncssh>=2.14.0
+
 # HTTP client for Ollama
 httpx>=0.26.0
 
