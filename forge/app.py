@@ -159,29 +159,49 @@ class ForgeApp(App):
         # This is here to show the binding in footer; actual submit is handled by Input.Submitted
         pass
 
+    def _get_clipboard_commands(self) -> tuple[list[str], list[str]]:
+        """Get platform-specific clipboard commands (copy_cmd, paste_cmd)."""
+        import platform
+        system = platform.system()
+
+        if system == "Darwin":  # macOS
+            return (["pbcopy"], ["pbpaste"])
+        elif system == "Linux":
+            # Check if WSL
+            try:
+                with open("/proc/version", "r") as f:
+                    if "microsoft" in f.read().lower():
+                        return (["clip.exe"], ["powershell.exe", "-command", "Get-Clipboard"])
+            except:
+                pass
+            # Native Linux - try xclip
+            return (["xclip", "-selection", "clipboard"], ["xclip", "-selection", "clipboard", "-o"])
+        else:  # Windows native (unlikely in terminal)
+            return (["clip"], ["powershell", "-command", "Get-Clipboard"])
+
     def action_copy(self) -> None:
-        """Copy last response to clipboard (WSL/Windows)."""
+        """Copy last response to clipboard."""
         if not self.last_response:
             self.notify("Nothing to copy")
             return
         try:
-            # WSL: use clip.exe to copy to Windows clipboard
+            copy_cmd, _ = self._get_clipboard_commands()
             process = subprocess.Popen(
-                ["clip.exe"],
+                copy_cmd,
                 stdin=subprocess.PIPE,
                 text=True,
             )
             process.communicate(input=self.last_response)
-            self.notify(f"Copied {len(self.last_response)} chars to clipboard")
+            self.notify(f"Copied {len(self.last_response)} chars")
         except Exception as e:
             self.notify(f"Copy failed: {e}")
 
     def action_paste(self) -> None:
-        """Paste from clipboard into input (WSL/Windows)."""
+        """Paste from clipboard into input."""
         try:
-            # WSL: use powershell to get Windows clipboard
+            _, paste_cmd = self._get_clipboard_commands()
             result = subprocess.run(
-                ["powershell.exe", "-command", "Get-Clipboard"],
+                paste_cmd,
                 capture_output=True,
                 text=True,
                 timeout=5,
