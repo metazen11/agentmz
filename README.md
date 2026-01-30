@@ -74,7 +74,7 @@ The installer will:
 7. Configure local HTTPS (trust Caddy CA)
 8. Wait for all services to be healthy
 9. Run database migrations
-10. Pull Ollama models (qwen3:1.7b)
+10. Pull Ollama models (gemma3:4b)
 11. Open browser to the UI
 
 ### Installation Options
@@ -160,7 +160,7 @@ curl -X POST https://wfhub.localhost/aider/api/agent/run \
 # Switch model
 curl -X POST https://wfhub.localhost/aider/api/model/switch \
   -H "Content-Type: application/json" \
-  -d '{"model": "qwen3:1.7b"}'
+  -d '{"model": "gemma3:4b"}'
 ```
 
 ### Health
@@ -216,6 +216,29 @@ Accessible through the HTTPS proxy at `https://wfhub.localhost/aider` when the s
 | GET | `/logs/{container}` | Get recent container logs |
 | WS | `/ws/logs/{container}` | Stream container logs |
 
+## Recommended Models
+
+Based on extensive testing, these models provide the best balance of speed, quality, and capability:
+
+| Model | Size | Use Case | Speed | Tool Support |
+|-------|------|----------|-------|--------------|
+| **gemma3:4b** | 3.3GB | Default - coding + vision | Fast (~5s) | ✅ Native |
+| qwen3-vl:8b | ~5GB | Vision fallback | Medium | ✅ Native |
+
+### Model Selection Findings
+
+- **gemma3:4b** is 18x faster than qwen2.5vl:7b with equivalent vision quality
+- Supports native tool calling (no fallback parsing needed)
+- Handles HTML, Python, and general coding tasks reliably
+- Vision capability enables UI screenshot analysis
+
+### Pull Recommended Models
+
+```bash
+ollama pull gemma3:4b        # Primary (required)
+ollama pull qwen3-vl:8b      # Vision fallback (optional)
+```
+
 ## Configuration
 
 All configuration is in `.env`:
@@ -237,8 +260,8 @@ MAIN_API_URL=https://wfhub.localhost
 AIDER_API_URL=https://wfhub.localhost/aider
 
 # Models
-AIDER_MODEL=ollama_chat/qwen3:1.7b
-AGENT_MODEL=qwen3:1.7b
+AIDER_MODEL=ollama_chat/gemma3:4b
+AGENT_MODEL=gemma3:4b
 
 # Ports
 FASTAPI_PORT=8002
@@ -345,7 +368,7 @@ curl http://localhost:8002/health/full | python3 -m json.tool
 curl https://wfhub.localhost/ollama/api/tags
 
 # Pull missing model
-docker exec wfhub-v2-ollama ollama pull qwen3:1.7b
+docker exec wfhub-v2-ollama ollama pull gemma3:4b
 
 # Reset database (careful - deletes data!)
 docker compose --env-file .env -f docker/docker-compose.yml down

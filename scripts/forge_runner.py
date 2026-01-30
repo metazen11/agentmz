@@ -36,7 +36,7 @@ def _resolve_defaults(env: dict) -> dict:
             return False
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
-    model = env.get("FORGE_MODEL") or env.get("AGENT_CLI_MODEL") or env.get("AGENT_MODEL") or "qwen3:0.6b"
+    model = env.get("FORGE_MODEL") or env.get("AGENT_CLI_MODEL") or env.get("AGENT_MODEL") or "gemma3:4b"
     base_url = (
         env.get("FORGE_OLLAMA_BASE")
         or env.get("AGENT_CLI_OLLAMA_BASE")

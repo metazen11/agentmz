@@ -16,6 +16,20 @@ from pathlib import Path
 
 from database import get_db
 
+# Queue service (lazy import to avoid startup issues if procrastinate not installed)
+queue_app = None
+queue_worker_task = None
+
+def _init_queue():
+    """Initialize queue service if available."""
+    global queue_app
+    try:
+        from services.queue_service import app as procrastinate_app
+        queue_app = procrastinate_app
+        return True
+    except ImportError:
+        return False
+
 app = FastAPI(title="Agentic v2", version="2.0.0")
 
 # CORS for websocket connections from browser
@@ -63,6 +77,51 @@ app.include_router(ollama.router, tags=["ollama"])  # Register before logs (whic
 app.include_router(logs.router, tags=["logs"])
 app.include_router(help_agents.router, tags=["help"])
 app.include_router(terminal.router, tags=["terminal"])
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    global queue_worker_task
+    if _init_queue() and queue_app:
+        # Run procrastinate schema setup
+        try:
+            async with queue_app.open_async() as app_ctx:
+                await app_ctx.connector.schema_manager.apply_schema()
+            print("[QUEUE] Schema initialized")
+
+            # Start background worker
+            async def run_worker():
+                try:
+                    async with queue_app.open_async() as app_ctx:
+                        await app_ctx.run_worker_async(
+                            queues=["ollama"],
+                            concurrency=1,  # Process one Ollama request at a time
+                        )
+                except asyncio.CancelledError:
+                    print("[QUEUE] Worker cancelled")
+                except Exception as e:
+                    print(f"[QUEUE] Worker error: {e}")
+
+            queue_worker_task = asyncio.create_task(run_worker())
+            print("[QUEUE] Worker started (concurrency=1)")
+        except Exception as e:
+            print(f"[QUEUE] Failed to initialize: {e}")
+    else:
+        print("[QUEUE] Queue service not available (procrastinate not installed)")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    global queue_worker_task
+    if queue_worker_task:
+        queue_worker_task.cancel()
+        try:
+            await queue_worker_task
+        except asyncio.CancelledError:
+            pass
+        print("[QUEUE] Worker stopped")
+
 
 @app.get("/health")
 def health():
