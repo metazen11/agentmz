@@ -49,6 +49,11 @@ load_dotenv "$DOTENV"
 export AGENT_CLI_TRACE="${AGENT_CLI_TRACE:-1}"
 export AGENT_CLI_DEBUG="${AGENT_CLI_DEBUG:-1}"
 export AGENT_CLI_DEBUG_PAYLOAD="${AGENT_CLI_DEBUG_PAYLOAD:-1}"
+export AGENT_CLI_LOG_RESPONSES="${AGENT_CLI_LOG_RESPONSES:-1}"
+export AGENT_CLI_LOG_DIR="${AGENT_CLI_LOG_DIR:-$REPO_ROOT/logs}"
+export AGENT_CLI_SPINNER="${AGENT_CLI_SPINNER:-1}"
+export AGENT_CLI_MAX_ITERS="${AGENT_CLI_MAX_ITERS:-2}"
+export AGENT_CLI_TOOL_FALLBACK="${AGENT_CLI_TOOL_FALLBACK:-1}"  # Parse JSON from text when model doesn't use native tool calls
 DEBUG_LOG_FILE="${DEBUG_LOG_FILE:-$REPO_ROOT/logs/forge_trace.log}"
 mkdir -p "$(dirname "$DEBUG_LOG_FILE")"
 log "Capturing agent payloads to $DEBUG_LOG_FILE"
@@ -166,49 +171,75 @@ MODELS="$(sort_models_by_size "$MODELS")"
 log "Running models (sorted by size): $MODELS"
 
 WORKSPACE="${FORGE_WORKSPACE:-poc}"
-TESTS="${1:-both}" # html | js | both
+TESTS="${1:-both}" # html | py | both
 
 run_forge() {
   local prompt="$1"
   local model="$2"
-  local timeout="${3:-}"
-  if [[ -z "$timeout" ]]; then
-    timeout="$(get_timeout_for_model "$model")"
+  local invoke_timeout="${3:-}"
+  if [[ -z "$invoke_timeout" ]]; then
+    invoke_timeout="$(get_timeout_for_model "$model")"
   fi
-  log "Forge run (model=$model, timeout=${timeout}s)"
+  # Process-level timeout as safeguard (2x invoke timeout for retries)
+  local process_timeout=$((invoke_timeout * 3))
+  log "Forge run (model=$model, invoke_timeout=${invoke_timeout}s, process_timeout=${process_timeout}s)"
   (
     cd "$REPO_ROOT"
-    "$PYTHON_CMD" scripts/forge_runner.py \
-      --prompt "$prompt" \
-      --model "$model" \
-      --workspace "$WORKSPACE" \
-      --invoke-timeout "$timeout"
+    timeout --kill-after=10 "${process_timeout}s" \
+      "$PYTHON_CMD" scripts/forge_runner.py \
+        --prompt "$prompt" \
+        --model "$model" \
+        --workspace "$WORKSPACE" \
+        --invoke-timeout "$invoke_timeout"
   )
+}
+
+cleanup_test_files() {
+  local workspace="$1"
+  local slug="$2"
+  log "Cleaning up previous test files for $slug..."
+  rm -f "workspaces/$workspace/hello-world-$slug.html" 2>/dev/null || true
+  rm -f "workspaces/$workspace/converter-$slug.py" 2>/dev/null || true
 }
 
 check_html() {
   local file="$1"
+  [[ -f "$file" ]] || return 1
   grep -qi "<!doctype html" "$file" || return 1
   grep -qi "<html" "$file" || return 1
   grep -qi "<head" "$file" || return 1
   grep -qi "<body" "$file" || return 1
   [[ $(grep -i "@keyframes" "$file" | wc -l) -ge 2 ]] || return 1
   [[ $(grep -i "animation" "$file" | wc -l) -ge 2 ]] || return 1
+  grep -qi "infinite" "$file" || return 1  # Must loop infinitely
   grep -qi "background" "$file" || return 1
 }
 
-check_js_create() {
+check_converter_create() {
   local file="$1"
-  grep -qi "hello world" "$file" || return 1
-  grep -qi "document.body" "$file" || return 1
+  [[ -f "$file" ]] || return 1
+  # Must have shebang and be valid Python structure
+  grep -q "#!/usr/bin/env python" "$file" || grep -q "^import\|^from" "$file" || return 1
+  # Must use argparse for CLI
+  grep -qi "argparse\|ArgumentParser" "$file" || return 1
+  # Must handle JSON and CSV
+  grep -qi "json" "$file" || return 1
+  grep -qi "csv" "$file" || return 1
+  # Must have main entry point
+  grep -qi "__main__\|def main" "$file" || return 1
 }
 
-check_js_improve() {
+check_converter_improve() {
   local file="$1"
-  grep -qi "domcontentloaded" "$file" || return 1
-  grep -qi "createElement" "$file" || return 1
-  grep -qi "append" "$file" || return 1
-  grep -qi "console.log" "$file" || return 1
+  [[ -f "$file" ]] || return 1
+  # Check for improvement comment
+  grep -qi "IMPROVED" "$file" || return 1
+  # Check for error handling with specific exceptions
+  grep -qi "FileNotFoundError\|JSONDecodeError" "$file" || return 1
+  # Check for extracted function (testable code)
+  grep -qi "def convert" "$file" || return 1
+  # Check for input validation (file exists check)
+  grep -qi "exists\|isfile\|os.path" "$file" || return 1
 }
 IFS=',' read -r -a MODEL_LIST <<< "$MODELS"
 MODEL_COUNT=0
@@ -229,59 +260,61 @@ for MODEL in "${MODEL_LIST[@]}"; do
     continue
   fi
 
+  # Clean up previous test files to avoid "file already exists" errors
+  cleanup_test_files "$WORKSPACE" "$SLUG"
+
   TIMEOUT="$(get_timeout_for_model "$MODEL")"
   log "Using timeout=${TIMEOUT}s for $MODEL"
 
   if [[ "$TESTS" == "html" || "$TESTS" == "both" ]]; then
     HTML_FILE="workspaces/$WORKSPACE/hello-world-$SLUG.html"
     log "=== HTML test for $MODEL ==="
-    PROMPT="You are Forge, a system-agnostic coding agent. Create a new file named hello-world-$SLUG.html in the workspace root. The file must be valid HTML5 with <!doctype html>, <html>, <head>, <body>. Include inline CSS and JS, and use vivid, high-contrast colors or gradients for the background and animated elements. Add at least two CSS animations: one for the background and one for text; at least one animation should include a smooth fade effect. Use write_file to create the file; if it already exists, use read_file then apply_patch to update it. Do not create any other files."
+    PROMPT="Create hello-world-$SLUG.html with valid HTML5 structure. Include inline CSS/JS with vibrant colors. Add two @keyframes animations with 'infinite': one for background, one for text fade. Use write_file."
     run_forge "$PROMPT" "$MODEL" "$TIMEOUT" || true
     if [[ ! -f "$HTML_FILE" ]]; then
       log "Missing $HTML_FILE; retrying with strict tool-call prompt"
-      STRICT="You are Forge. Output ONLY a JSON tool call for write_file with keys {\"name\":\"write_file\",\"arguments\":{\"path\":\"hello-world-$SLUG.html\",\"content\":\"...\"}}. The content must be valid HTML5 with two @keyframes animations, bold colorful gradients for the background and text, and at least one fade animation. Do not include prose."
+      STRICT="Output ONLY JSON: {\"name\":\"write_file\",\"arguments\":{\"path\":\"hello-world-$SLUG.html\",\"content\":\"...\"}}. HTML5 with two @keyframes infinite animations, gradients, fade. No prose."
       run_forge "$STRICT" "$MODEL" "$TIMEOUT" || true
     fi
     if check_html "$HTML_FILE"; then
       log "HTML checks passed: $HTML_FILE"
     else
       log "HTML checks failed; requesting Forge to improve HTML"
-      IMPROVE_HTML="You are Forge, a system-agnostic coding agent. Improve the existing file hello-world-$SLUG.html so it has at least two distinct @keyframes animations (background + text) with vibrant colors, at least one fading cycle, and ensure those animations are applied to elements. Use read_file first, then apply_patch. Do not change the filename."
+      IMPROVE_HTML="Fix hello-world-$SLUG.html: read_file then apply_patch. Ensure: two @keyframes with 'infinite', gradient background. Add '<!-- IMPROVED -->' comment."
       run_forge "$IMPROVE_HTML" "$MODEL" "$TIMEOUT" || true
       if check_html "$HTML_FILE"; then
         log "HTML checks passed after improve: $HTML_FILE"
       else
         log "HTML checks failed after improve: $HTML_FILE"
         FAILED_TESTS+=("$MODEL:html")
-        log "Continuing despite failed HTML checks; inspect $HTML_FILE to debug."
-        continue
+        log "HTML checks failed; inspect $HTML_FILE to debug. Continuing to Python test..."
       fi
     fi
   fi
 
-  if [[ "$TESTS" == "js" || "$TESTS" == "both" ]]; then
-    JS_FILE="workspaces/$WORKSPACE/function-$SLUG.js"
-    log "=== JS test for $MODEL ==="
-    CREATE="You are Forge, a system-agnostic coding agent. Create a new file named function-$SLUG.js in the workspace root. The file should only contain JavaScript that displays 'hello world' by setting document.body.textContent and logging to the console. Use write_file to create the file; if it already exists, use read_file then apply_patch to update it. Do not create any other files."
+  if [[ "$TESTS" == "py" || "$TESTS" == "both" ]]; then
+    PY_FILE="workspaces/$WORKSPACE/converter-$SLUG.py"
+    log "=== Python Converter test for $MODEL ==="
+    CREATE="Create converter-$SLUG.py: JSON to CSV CLI using argparse (--input, --output), stdlib only (json, csv), __main__ block, success message. Use write_file."
     run_forge "$CREATE" "$MODEL" "$TIMEOUT" || true
-    if [[ ! -f "$JS_FILE" ]]; then
-      log "Missing $JS_FILE; retrying with strict tool-call prompt"
-      STRICT_JS="You are Forge. Output ONLY a JSON tool call for write_file with keys {\"name\":\"write_file\",\"arguments\":{\"path\":\"function-$SLUG.js\",\"content\":\"...\"}}. The content must set document.body text to 'hello world' and log it. Do not include prose."
-      run_forge "$STRICT_JS" "$MODEL" "$TIMEOUT" || true
+    if [[ ! -f "$PY_FILE" ]]; then
+      log "Missing $PY_FILE; retrying with strict tool-call prompt"
+      STRICT_PY="Output ONLY JSON: {\"name\":\"write_file\",\"arguments\":{\"path\":\"converter-$SLUG.py\",\"content\":\"...\"}}. Python: argparse, json, csv, __main__. No prose."
+      run_forge "$STRICT_PY" "$MODEL" "$TIMEOUT" || true
     fi
-    if ! check_js_create "$JS_FILE"; then
-      log "JS create checks failed: $JS_FILE"
-      FAILED_TESTS+=("$MODEL:js_create")
+    if ! check_converter_create "$PY_FILE"; then
+      log "Python converter create checks failed: $PY_FILE"
+      FAILED_TESTS+=("$MODEL:converter_create")
       continue
     fi
 
-    IMPROVE="You are Forge, a system-agnostic coding agent. Improve the existing file function-$SLUG.js without changing the filename. Keep the console log and hello world text. Wrap the logic in DOMContentLoaded and avoid overwriting the entire body. Create a dedicated element and append it to the body. Use read_file first, then apply_patch to update the file."
+    IMPROVE="Improve converter-$SLUG.py: read_file then apply_patch. Fix: snake_case names, try/except FileNotFoundError+JSONDecodeError, input validation, extract convert_json_to_csv() function. Add '# IMPROVED' comment."
     run_forge "$IMPROVE" "$MODEL" "$TIMEOUT" || true
-    if check_js_improve "$JS_FILE"; then
-      log "JS improve checks passed: $JS_FILE"
+    if check_converter_improve "$PY_FILE"; then
+      log "Python converter improve checks passed: $PY_FILE"
     else
-      log "JS improve checks failed: $JS_FILE"
-      FAILED_TESTS+=("$MODEL:js_improve")
+      log "Python converter improve checks failed: $PY_FILE"
+      FAILED_TESTS+=("$MODEL:converter_improve")
     fi
   fi
 done
