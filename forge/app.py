@@ -140,8 +140,37 @@ class ForgeApp(App):
             else:
                 chat.write(f"[green]Current model: {self.model}[/green]\n")
             return True
+        elif cmd in ("cp", "mv", "mkdir", "touch", "rm", "cat", "head", "tail", "grep", "curl", "git"):
+            # Shell commands - run directly
+            return self._cmd_shell(prompt, chat)
 
         return False
+
+    def _cmd_shell(self, cmd: str, chat) -> bool:
+        """Run shell command directly in workspace."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=self.workspace,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.stdout:
+                chat.write(f"{result.stdout}")
+            if result.stderr:
+                chat.write(f"[red]{result.stderr}[/red]")
+            if result.returncode != 0 and not result.stderr:
+                chat.write(f"[red]Exit code: {result.returncode}[/red]\n")
+            elif result.returncode == 0 and not result.stdout and not result.stderr:
+                chat.write("[green]OK[/green]\n")
+        except subprocess.TimeoutExpired:
+            chat.write("[red]Command timed out (30s)[/red]\n")
+        except Exception as e:
+            chat.write(f"[red]Error: {e}[/red]\n")
+        return True
 
     def _cmd_cd(self, path: str, chat, status) -> bool:
         """Change workspace directory."""
@@ -189,13 +218,20 @@ class ForgeApp(App):
 
     def _cmd_help(self, chat) -> None:
         """Show built-in commands."""
-        chat.write("[bold]Built-in commands (no LLM):[/bold]\n")
-        chat.write("  [cyan]cd <path>[/cyan]    Change workspace directory\n")
-        chat.write("  [cyan]pwd[/cyan]          Show current workspace\n")
-        chat.write("  [cyan]ls [path][/cyan]    List files\n")
-        chat.write("  [cyan]model [name][/cyan] Show/set model\n")
-        chat.write("  [cyan]clear[/cyan]        Clear chat\n")
-        chat.write("  [cyan]help[/cyan]         Show this help\n")
+        chat.write("[bold]Built-in commands (instant, no LLM):[/bold]\n")
+        chat.write("  [cyan]cd <path>[/cyan]     Change workspace directory\n")
+        chat.write("  [cyan]pwd[/cyan]           Show current workspace\n")
+        chat.write("  [cyan]ls [path][/cyan]     List files\n")
+        chat.write("  [cyan]model [name][/cyan]  Show/set model\n")
+        chat.write("  [cyan]clear[/cyan]         Clear chat\n")
+        chat.write("  [cyan]help[/cyan]          Show this help\n")
+        chat.write("\n[bold]Shell commands (run directly):[/bold]\n")
+        chat.write("  [cyan]cp, mv, rm[/cyan]    File operations\n")
+        chat.write("  [cyan]mkdir, touch[/cyan]  Create dirs/files\n")
+        chat.write("  [cyan]cat, head, tail[/cyan] View files\n")
+        chat.write("  [cyan]grep <pattern>[/cyan] Search in files\n")
+        chat.write("  [cyan]git <cmd>[/cyan]     Git commands\n")
+        chat.write("  [cyan]curl <url>[/cyan]    HTTP requests\n")
         chat.write("\n[dim]Everything else goes to the LLM.[/dim]\n")
 
     def run_agent(self, prompt: str) -> None:

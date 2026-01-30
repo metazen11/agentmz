@@ -752,7 +752,7 @@ def _build_tools(workspace_root: str):
 
     @tool
     def run_command(command: str) -> dict:
-        """Run a safe shell command in the workspace."""
+        """Run a shell command in the workspace. Supports: cp, mv, rm, mkdir, touch, cat, head, tail, grep, git, curl, and other common CLI tools."""
         import shlex
         import subprocess
 
