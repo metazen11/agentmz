@@ -53,12 +53,18 @@ DEBUG_LOG_FILE="${DEBUG_LOG_FILE:-$REPO_ROOT/logs/forge_trace.log}"
 mkdir -p "$(dirname "$DEBUG_LOG_FILE")"
 log "Capturing agent payloads to $DEBUG_LOG_FILE"
 exec > >(tee -a "$DEBUG_LOG_FILE") 2>&1
+# Auto-detect Python with venv preference
 PYTHON_CMD="${FORGE_PYTHON:-}"
 if [[ -z "$PYTHON_CMD" ]]; then
-  if command -v python >/dev/null 2>&1; then
-    PYTHON_CMD=python
+  # Prefer venv python (has langchain-ollama installed)
+  if [[ -f "$REPO_ROOT/venv/bin/python3" ]]; then
+    PYTHON_CMD="$REPO_ROOT/venv/bin/python3"
+  elif [[ -f "$REPO_ROOT/venv/bin/python" ]]; then
+    PYTHON_CMD="$REPO_ROOT/venv/bin/python"
   elif command -v python3 >/dev/null 2>&1; then
     PYTHON_CMD=python3
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD=python
   else
     log "ERROR: No Python interpreter found; install python or set FORGE_PYTHON."
     log "Exiting gracefully."
@@ -130,15 +136,34 @@ check_ollama_health() {
   return 1
 }
 
+discover_pulled_models() {
+  local base_url="${OLLAMA_API_BASE_LOCAL:-http://localhost:11435}"
+  curl -sf "${base_url}/api/tags" 2>/dev/null | "$PYTHON_CMD" -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    models = [m['name'] for m in data.get('models', [])]
+    print(','.join(models))
+except:
+    pass
+"
+}
+
+# Use FORGE_MODEL_MATRIX if set, otherwise auto-discover from Ollama
 MODELS="${FORGE_MODEL_MATRIX:-}"
 if [[ -z "$MODELS" ]]; then
-  log "ERROR: FORGE_MODEL_MATRIX is empty. Set it before running."
-  log "Example: export FORGE_MODEL_MATRIX=qwen3:0.6b,qwen3:1.7b"
-  log "Exiting gracefully."
-  return 1 2>/dev/null || exit 1
+  log "FORGE_MODEL_MATRIX not set, auto-discovering pulled models..."
+  MODELS="$(discover_pulled_models)"
+  if [[ -z "$MODELS" ]]; then
+    log "ERROR: No models found in Ollama. Pull some models first."
+    log "Example: ollama pull qwen3:0.6b"
+    log "Exiting gracefully."
+    return 1 2>/dev/null || exit 1
+  fi
+  log "Discovered models: $MODELS"
 fi
 MODELS="$(sort_models_by_size "$MODELS")"
-log "Running models: $MODELS"
+log "Running models (sorted by size): $MODELS"
 
 WORKSPACE="${FORGE_WORKSPACE:-poc}"
 TESTS="${1:-both}" # html | js | both
