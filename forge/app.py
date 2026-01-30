@@ -10,7 +10,7 @@ from textual.widgets import Footer, Input, Static
 from textual.worker import Worker, get_current_worker
 
 from forge.widgets.chat_display import ChatDisplay
-from forge.widgets.file_autocomplete import FileInput
+from forge.widgets.file_autocomplete import FileAutoComplete, FileInput
 from forge.widgets.status_bar import StatusBar
 
 
@@ -63,11 +63,13 @@ class ForgeApp(App):
             ChatDisplay(id="chat"),
             id="chat-container",
         )
-        yield FileInput(
+        prompt_input = FileInput(
             workspace=self.workspace,
             placeholder="Enter your prompt... (@ for files)",
             id="prompt-input",
         )
+        yield prompt_input
+        yield FileAutoComplete(target=prompt_input, workspace=self.workspace)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -83,27 +85,29 @@ class ForgeApp(App):
         if not prompt:
             return
 
+        # Clear input IMMEDIATELY for responsiveness
+        event.input.value = ""
+
         # Add to history
         self.history.append(prompt)
         self.history_index = len(self.history)
 
-        # Clear input
-        event.input.value = ""
-
-        # Display prompt
+        # Display prompt and status IMMEDIATELY
         chat = self.query_one("#chat", ChatDisplay)
+        status = self.query_one("#status-bar", StatusBar)
         chat.write(f"\n[bold cyan]> {prompt}[/bold cyan]\n")
+        chat.write("[dim]Sending...[/dim]")
+        status.set_status("Sending...")
+        status.set_running(True)
+
+        # Force refresh before async work starts
+        self.refresh()
 
         # Run agent in background
         self.run_agent(prompt)
 
     def run_agent(self, prompt: str) -> None:
         """Run the agent in a background worker."""
-        from forge.agent.runner import run_streaming
-
-        chat = self.query_one("#chat", ChatDisplay)
-        status = self.query_one("#status-bar", StatusBar)
-
         @self.call_later
         def start_worker():
             self.current_worker = self.run_worker(
@@ -111,7 +115,6 @@ class ForgeApp(App):
                 name="agent",
                 exit_on_error=False,
             )
-            status.set_running(True)
 
     async def _run_agent_task(self, prompt: str) -> None:
         """Background task for running agent."""

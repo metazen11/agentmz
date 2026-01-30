@@ -1,22 +1,30 @@
-"""File autocomplete widget for @ mentions."""
+"""File autocomplete widget for @ mentions using textual-autocomplete."""
 import os
 from pathlib import Path
-from typing import Callable
 
-from textual.suggester import Suggester, SuggestFromList
 from textual.widgets import Input
 
+try:
+    from textual_autocomplete import AutoComplete, DropdownItem
+    HAS_AUTOCOMPLETE = True
+except ImportError:
+    HAS_AUTOCOMPLETE = False
+    AutoComplete = None
+    DropdownItem = None
 
-class FileAutocompleteSuggester(Suggester):
-    """Suggester that provides file completions when @ is typed."""
 
-    def __init__(self, workspace: str, case_sensitive: bool = False):
-        super().__init__(use_cache=False, case_sensitive=case_sensitive)
+class FileAutoComplete(AutoComplete if HAS_AUTOCOMPLETE else object):
+    """Autocomplete dropdown that triggers on @ for file selection."""
+
+    def __init__(self, target: Input, workspace: str = ".", **kwargs):
+        if not HAS_AUTOCOMPLETE:
+            raise ImportError("textual-autocomplete required: pip install textual-autocomplete")
+        super().__init__(target=target, **kwargs)
         self.workspace = workspace
         self._file_cache: list[str] | None = None
 
-    def _scan_files(self, max_files: int = 500) -> list[str]:
-        """Scan workspace for files, caching results."""
+    def _scan_files(self, max_files: int = 200) -> list[str]:
+        """Scan workspace for files."""
         if self._file_cache is not None:
             return self._file_cache
 
@@ -26,11 +34,9 @@ class FileAutocompleteSuggester(Suggester):
         if not workspace_path.exists():
             return []
 
-        # Walk workspace, skip hidden and common ignore patterns
-        ignore_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".cache"}
+        ignore_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".cache", ".aider"}
 
         for root, dirs, filenames in os.walk(workspace_path):
-            # Filter out ignored directories
             dirs[:] = [d for d in dirs if d not in ignore_dirs and not d.startswith(".")]
 
             for filename in filenames:
@@ -49,53 +55,60 @@ class FileAutocompleteSuggester(Suggester):
         return self._file_cache
 
     def invalidate_cache(self) -> None:
-        """Clear the file cache to force rescan."""
+        """Clear file cache to force rescan."""
         self._file_cache = None
 
-    async def get_suggestion(self, value: str) -> str | None:
-        """Get file suggestion when @ is typed."""
-        # Find the last @ in the input
+    def get_search_string(self, value: str) -> str:
+        """Extract the search string after @."""
         at_pos = value.rfind("@")
         if at_pos == -1:
-            return None
-
-        # Get the partial path after @
+            return ""
         partial = value[at_pos + 1:]
-
-        # Don't suggest if there's a space after @ (completed)
+        # Don't search if there's a space (already completed)
         if " " in partial:
-            return None
+            return ""
+        return partial
 
-        # Get matching files
+    def get_candidates(self, search_string: str) -> list[DropdownItem]:
+        """Return matching file candidates."""
+        if not search_string and "@" not in (self.target.value or ""):
+            return []
+
         files = self._scan_files()
-        partial_lower = partial.lower() if not self.case_sensitive else partial
+        search_lower = search_string.lower()
 
+        matches = []
         for filepath in files:
-            check_path = filepath.lower() if not self.case_sensitive else filepath
+            filepath_lower = filepath.lower()
+            # Fuzzy match: search string anywhere in path
+            if search_lower in filepath_lower or filepath_lower.startswith(search_lower):
+                matches.append(DropdownItem(main=filepath))
+            if len(matches) >= 15:  # Limit dropdown size
+                break
 
-            # Match if partial is prefix or fuzzy match
-            if check_path.startswith(partial_lower) or partial_lower in check_path:
-                # Return the full value with completion
-                return value[:at_pos + 1] + filepath
+        return matches
 
-        return None
+    def apply_completion(self, value: str, item: DropdownItem) -> str:
+        """Insert the selected file path after @."""
+        at_pos = value.rfind("@")
+        if at_pos == -1:
+            return value + item.main
+
+        # Replace @partial with @filepath
+        prefix = value[:at_pos + 1]  # Keep the @
+        return prefix + item.main + " "
 
 
+# Keep FileInput for backwards compatibility but use the dropdown
 class FileInput(Input):
-    """Input widget with @ file autocomplete support."""
+    """Input widget - use with FileAutoComplete for @ file completion."""
 
-    def __init__(
-        self,
-        workspace: str = ".",
-        *args,
-        **kwargs,
-    ):
+    def __init__(self, workspace: str = ".", *args, **kwargs):
         self.workspace = workspace
-        self._file_suggester = FileAutocompleteSuggester(workspace)
-        super().__init__(*args, suggester=self._file_suggester, **kwargs)
+        # Remove suggester if passed - we'll use FileAutoComplete dropdown instead
+        kwargs.pop("suggester", None)
+        super().__init__(*args, **kwargs)
 
     def set_workspace(self, workspace: str) -> None:
-        """Update the workspace for file suggestions."""
+        """Update workspace for file suggestions."""
         self.workspace = workspace
-        self._file_suggester.workspace = workspace
-        self._file_suggester.invalidate_cache()
