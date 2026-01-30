@@ -8,5 +8,14 @@ __pycache__/
 *.pyc
 workspaces/
 uploads/
+logs/
+# Virtual environments
+venv/
+.venv*/
+# Planning/session files
+*_plan.txt
+session_*.md
+# Artifacts
+=*
 # Windows reserved device name artifact
 nul
