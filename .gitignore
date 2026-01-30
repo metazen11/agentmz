@@ -17,5 +17,6 @@ venv/
 session_*.md
 # Artifacts
 =*
+@*
 # Windows reserved device name artifact
 nul
