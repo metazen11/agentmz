@@ -100,6 +100,11 @@ aicoder() {
   "${script_dir}/agent.sh" "$@"
 }
 
+# Forge TUI - run from anywhere with cwd as workspace
+forge() {
+  "${script_dir}/forge/forge" "$@"
+}
+
 run_aider_local() {
   "${script_dir}/run_aider_local.sh" "$@"
 }
@@ -122,5 +127,10 @@ Commands:
   agent-config                       # Configuration wizard
   agent-model                        # Quick model switch
   agent --help                       # Full options
+
+  forge                              # Forge TUI (uses cwd as workspace)
+  forge -p "List files"              # Single prompt mode
+  forge -m qwen3:1.7b -p "Create x"  # Specify model
+  forge --help                       # Forge options
 EOF
 fi

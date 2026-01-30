@@ -27,6 +27,7 @@ SKIP_HTTPS=false
 NO_BROWSER=false
 INSTALL_AIDER=false
 INSTALL_AGENT=false
+INSTALL_FORGE=true  # Forge TUI installed by default
 
 # === Parse CLI Arguments ===
 while [[ $# -gt 0 ]]; do
@@ -51,9 +52,18 @@ while [[ $# -gt 0 ]]; do
             INSTALL_AGENT=true
             shift
             ;;
+        --forge)
+            INSTALL_FORGE=true
+            shift
+            ;;
+        --no-forge)
+            INSTALL_FORGE=false
+            shift
+            ;;
         --all)
             INSTALL_AIDER=true
             INSTALL_AGENT=true
+            INSTALL_FORGE=true
             shift
             ;;
         --help|-h)
@@ -67,7 +77,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-browser     Don't open browser at end"
             echo "  --aider          Install aider-chat CLI tool"
             echo "  --agent          Register 'agent' shell command"
-            echo "  --all            Install everything (aider + agent)"
+            echo "  --forge          Register 'forge' TUI command (default: on)"
+            echo "  --no-forge       Skip forge installation"
+            echo "  --all            Install everything (aider + agent + forge)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "After installation:"
@@ -222,18 +234,18 @@ APP_URL=https://wfhub.localhost
 MAIN_API_URL=https://wfhub.localhost
 
 # Vision (image descriptions via Ollama)
-VISION_MODEL=qwen2.5vl:7b
+VISION_MODEL=gemma3:4b
 VISION_TIMEOUT=20
-VISION_MODEL_REGEX=(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|qwen2\\.5vl|qwen2-vl|qwen-vl|clip)
+VISION_MODEL_REGEX=(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|gemma3|qwen.*vl|clip)
 VISION_MAX_TOKENS=120
 VISION_IMAGE_MAX_SIZE=640
 
 # Aider Configuration (for code edits)
-AIDER_MODEL=ollama_chat/qwen3:1.7b
+AIDER_MODEL=ollama_chat/gemma3:4b
 AIDER_API_URL=https://wfhub.localhost/aider
 
 # Agent Configuration (for orchestration)
-AGENT_MODEL=qwen3:1.7b
+AGENT_MODEL=gemma3:4b
 AGENT_TIMEOUT=120
 MAX_ITERATIONS=20
 
@@ -370,8 +382,8 @@ echo -e "  Migrations: ${GREEN}complete${NC}"
 # === Step 11: Pull Ollama Models ===
 if [ "$SKIP_MODELS" = false ]; then
     echo -e "${YELLOW}[11/11] Checking Ollama models...${NC}"
-    AGENT_MODEL="${AGENT_MODEL:-qwen3:1.7b}"
-    VISION_MODEL="${VISION_MODEL:-llava:7b}"
+    AGENT_MODEL="${AGENT_MODEL:-gemma3:4b}"
+    VISION_MODEL="${VISION_MODEL:-gemma3:4b}"  # gemma3 supports vision
 
     AVAILABLE_MODELS=$(curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" 2>/dev/null || echo '{"models":[]}')
 
@@ -480,6 +492,25 @@ if [ "$INSTALL_AGENT" = true ]; then
         ./agent_alias_install.sh
     else
         echo -e "  agent: ${YELLOW}install script not found${NC}"
+    fi
+fi
+
+# === Register Forge Command (default: on) ===
+if [ "$INSTALL_FORGE" = true ]; then
+    echo ""
+    echo -e "${YELLOW}Registering 'forge' command...${NC}"
+    # Forge is included in wrapper_init.sh, so use agent_alias_install.sh
+    if [ -f "./agent_alias_install.sh" ]; then
+        if [ "$INSTALL_AGENT" != true ]; then
+            # Only run if agent wasn't already installed (avoids duplicate)
+            ./agent_alias_install.sh
+        fi
+        echo -e "  forge: ${GREEN}registered${NC}"
+        echo ""
+        echo "  Usage: forge -p 'List files'    # Single prompt (cwd = workspace)"
+        echo "         forge                    # Interactive TUI"
+    else
+        echo -e "  forge: ${YELLOW}install script not found${NC}"
     fi
 fi
 
