@@ -92,10 +92,15 @@ class ForgeApp(App):
         self.history.append(prompt)
         self.history_index = len(self.history)
 
-        # Display prompt and status IMMEDIATELY
         chat = self.query_one("#chat", ChatDisplay)
-        status = self.query_one("#status-bar", StatusBar)
         chat.write(f"\n[bold cyan]> {prompt}[/bold cyan]\n")
+
+        # Try deterministic commands first (no LLM needed)
+        if self._handle_builtin_command(prompt):
+            return
+
+        # Display status for LLM call
+        status = self.query_one("#status-bar", StatusBar)
         chat.write("[dim]Sending...[/dim]")
         status.set_status("Sending...")
         status.set_running(True)
@@ -105,6 +110,93 @@ class ForgeApp(App):
 
         # Run agent in background
         self.run_agent(prompt)
+
+    def _handle_builtin_command(self, prompt: str) -> bool:
+        """Handle deterministic commands without LLM. Returns True if handled."""
+        chat = self.query_one("#chat", ChatDisplay)
+        status = self.query_one("#status-bar", StatusBar)
+        parts = prompt.split(None, 1)
+        cmd = parts[0].lower() if parts else ""
+        arg = parts[1].strip().strip('"\'') if len(parts) > 1 else ""
+
+        if cmd == "cd":
+            return self._cmd_cd(arg, chat, status)
+        elif cmd == "pwd":
+            chat.write(f"[green]{self.workspace}[/green]\n")
+            return True
+        elif cmd == "ls":
+            return self._cmd_ls(arg, chat)
+        elif cmd in ("clear", "cls"):
+            self.action_clear()
+            return True
+        elif cmd == "help" or cmd == "?":
+            self._cmd_help(chat)
+            return True
+        elif cmd == "model":
+            if arg:
+                self.model = arg
+                status.set_model(arg)
+                chat.write(f"[green]Model set to: {arg}[/green]\n")
+            else:
+                chat.write(f"[green]Current model: {self.model}[/green]\n")
+            return True
+
+        return False
+
+    def _cmd_cd(self, path: str, chat, status) -> bool:
+        """Change workspace directory."""
+        if not path:
+            chat.write(f"[green]Current workspace: {self.workspace}[/green]\n")
+            return True
+
+        # Resolve path
+        if path.startswith("~"):
+            path = os.path.expanduser(path)
+        if not os.path.isabs(path):
+            path = os.path.normpath(os.path.join(self.workspace, path))
+
+        if os.path.isdir(path):
+            self.workspace = path
+            status.set_workspace(path)
+            # Update autocomplete
+            prompt_input = self.query_one("#prompt-input", FileInput)
+            prompt_input.set_workspace(path)
+            chat.write(f"[green]Workspace: {path}[/green]\n")
+        else:
+            chat.write(f"[red]Not a directory: {path}[/red]\n")
+        return True
+
+    def _cmd_ls(self, path: str, chat) -> bool:
+        """List files in workspace."""
+        target = os.path.join(self.workspace, path) if path else self.workspace
+        if not os.path.isdir(target):
+            chat.write(f"[red]Not a directory: {target}[/red]\n")
+            return True
+
+        try:
+            entries = sorted(os.listdir(target))
+            for entry in entries[:50]:
+                full = os.path.join(target, entry)
+                if os.path.isdir(full):
+                    chat.write(f"[blue]{entry}/[/blue]\n")
+                else:
+                    chat.write(f"{entry}\n")
+            if len(entries) > 50:
+                chat.write(f"[dim]... and {len(entries) - 50} more[/dim]\n")
+        except OSError as e:
+            chat.write(f"[red]Error: {e}[/red]\n")
+        return True
+
+    def _cmd_help(self, chat) -> None:
+        """Show built-in commands."""
+        chat.write("[bold]Built-in commands (no LLM):[/bold]\n")
+        chat.write("  [cyan]cd <path>[/cyan]    Change workspace directory\n")
+        chat.write("  [cyan]pwd[/cyan]          Show current workspace\n")
+        chat.write("  [cyan]ls [path][/cyan]    List files\n")
+        chat.write("  [cyan]model [name][/cyan] Show/set model\n")
+        chat.write("  [cyan]clear[/cyan]        Clear chat\n")
+        chat.write("  [cyan]help[/cyan]         Show this help\n")
+        chat.write("\n[dim]Everything else goes to the LLM.[/dim]\n")
 
     def run_agent(self, prompt: str) -> None:
         """Run the agent in a background worker."""
