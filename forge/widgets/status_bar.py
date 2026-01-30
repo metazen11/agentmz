@@ -37,6 +37,7 @@ class StatusBar(Static):
     def render(self) -> str:
         """Render the status bar."""
         parts = [
+            "[bold cyan]FORGE[/bold cyan]",
             f"[bold]Workspace:[/bold] {self.workspace}",
             f"[bold]Model:[/bold] {self.model}",
         ]

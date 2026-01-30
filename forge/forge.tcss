@@ -34,8 +34,15 @@ Footer {
 
 #prompt-input {
     dock: bottom;
+    height: 5;
+    max-height: 24;
     margin: 0 0 0 0;
     border: solid $primary;
+}
+
+/* Autocomplete dropdown styling */
+AutoComplete {
+    height: 24;
 }
 
 #prompt-input:focus {

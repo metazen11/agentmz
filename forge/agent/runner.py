@@ -48,6 +48,57 @@ def _resolve_workspace(workspace: str) -> str:
     return _agent_resolve_workspace(workspace)
 
 
+def _preprocess_prompt(prompt: str) -> str:
+    """Preprocess prompt before sending to LLM.
+
+    Strips @ prefix from file paths (used for autocomplete in TUI).
+    Only strips when it looks like a file path (contains / or has extension).
+    Preserves email addresses and other @mentions.
+
+    e.g. "edit @forge/app.py" -> "edit forge/app.py"
+    e.g. "email user@example.com" -> "email user@example.com" (preserved)
+    """
+    import re
+
+    def replace_file_ref(match):
+        path = match.group(1)
+        # Only strip @ if it looks like a file path:
+        # - Contains / (directory separator)
+        # - Ends with common file extension
+        # - Starts with . (dotfile/relative path)
+        if '/' in path or path.startswith('.') or re.search(r'\.(py|js|ts|html|css|json|md|txt|yaml|yml|toml|sh|go|rs|c|h|cpp|java)$', path):
+            return path
+        # Otherwise keep the @ (might be a mention or other use)
+        return '@' + path
+
+    return re.sub(r'@([a-zA-Z0-9_./-]+)', replace_file_ref, prompt)
+
+
+# Tool name aliases for common LLM mistakes
+TOOL_ALIASES = {
+    "rename_file": "move_file",
+    "rename": "move_file",
+    "mv": "move_file",
+    "cp": "copy_file",
+    "rm": "delete_file",
+    "remove_file": "delete_file",
+    "cat": "read_file",
+    "read": "read_file",
+    "write": "write_file",
+    "create_file": "write_file",
+    "ls": "list_files",
+    "dir": "list_files",
+    "find": "glob",
+    "search": "grep",
+    "exec": "run_command",
+    "shell": "run_command",
+    "bash": "run_command",
+    "reply": "respond",
+    "say": "respond",
+    "answer": "respond",
+}
+
+
 def _run_fallback_with_results(
     llm,
     tools,
@@ -90,7 +141,30 @@ def _run_fallback_with_results(
         if "filename" in args and "path" not in args:
             args["path"] = args.pop("filename")
 
-        tool_fn = tool_map.get(name)
+        # Strip @ prefix from file paths (from autocomplete)
+        for key in ["path", "src", "dst", "file", "file_path", "filename"]:
+            if key in args and isinstance(args[key], str) and args[key].startswith("@"):
+                args[key] = args[key][1:]
+
+        # Normalize rename/move/copy arguments (tools expect src/dst)
+        if "old_name" in args and "src" not in args:
+            args["src"] = args.pop("old_name")
+        if "new_name" in args and "dst" not in args:
+            args["dst"] = args.pop("new_name")
+        if "source" in args and "src" not in args:
+            args["src"] = args.pop("source")
+        if "destination" in args and "dst" not in args:
+            args["dst"] = args.pop("destination")
+        if "dest" in args and "dst" not in args:
+            args["dst"] = args.pop("dest")
+        if "from" in args and "src" not in args:
+            args["src"] = args.pop("from")
+        if "to" in args and "dst" not in args:
+            args["dst"] = args.pop("to")
+
+        # Resolve aliases first
+        resolved_name = TOOL_ALIASES.get(name, name)
+        tool_fn = tool_map.get(resolved_name)
 
         if not tool_fn:
             # Show what was attempted for unknown tools
@@ -98,6 +172,10 @@ def _run_fallback_with_results(
             results.append(f"[{name}] Unknown tool - attempted: {json.dumps(args)}")
             results.append(f"Available: {', '.join(tool_map.keys())}")
             continue
+
+        # Note if we used an alias
+        if resolved_name != name:
+            results.append(f"[{name} -> {resolved_name}]")
 
         try:
             result = tool_fn.invoke(args)
@@ -124,6 +202,12 @@ def _run_fallback_with_results(
                     elif "message" in result:
                         # respond tool - display the message directly
                         results.append(result["message"])
+                    elif "src" in result and "dst" in result:
+                        # move/copy/rename operations
+                        results.append(f"Moved: {result['src']} -> {result['dst']}")
+                    elif "deleted" in result:
+                        # delete operations
+                        results.append(f"Deleted: {result['deleted']}")
                     else:
                         results.append(f"[{name}] OK")
                 else:
@@ -179,13 +263,16 @@ def run_once(
     tools = _build_tools(workspace_root)
     client_with_tools = client.bind_tools(tools, tool_choice="auto")
 
+    # Preprocess prompt (strip @ from file references)
+    processed_prompt = _preprocess_prompt(prompt)
+
     fallback_parser = os.environ.get("AGENT_CLI_TOOL_FALLBACK", "1").lower() in {"1", "true", "yes"}
 
     try:
         result = _run_loop(
             client_with_tools,
             tools,
-            prompt,
+            processed_prompt,
             max_iters=max_iters,
             fallback_parser=fallback_parser,
             invoke_timeout=float(timeout),
@@ -196,7 +283,7 @@ def run_once(
     except Exception as e:
         if ResponseError is not None and isinstance(e, ResponseError) and "does not support tools" in str(e):
             # Use improved text fallback that shows results
-            return _run_fallback_with_results(client, tools, prompt, max_iters=max_iters)
+            return _run_fallback_with_results(client, tools, processed_prompt, max_iters=max_iters)
         return f"Error: {e}"
 
 
@@ -237,6 +324,9 @@ def run_streaming(
     workspace_root = _resolve_workspace(workspace)
     tools = _build_tools(workspace_root)
 
+    # Preprocess prompt (strip @ from file references)
+    processed_prompt = _preprocess_prompt(prompt)
+
     yield {"type": "status", "message": f"Running in {workspace}..."}
 
     # Try with native tools first, fall back to text mode
@@ -246,7 +336,7 @@ def run_streaming(
         result = _run_loop(
             client_with_tools,
             tools,
-            prompt,
+            processed_prompt,
             max_iters=max_iters,
             fallback_parser=fallback_parser,
             invoke_timeout=float(timeout),
@@ -257,7 +347,7 @@ def run_streaming(
     except Exception as e:
         if ResponseError is not None and isinstance(e, ResponseError) and "does not support tools" in str(e):
             yield {"type": "status", "message": "Using text fallback..."}
-            result = _run_fallback_with_results(client, tools, prompt, max_iters=max_iters)
+            result = _run_fallback_with_results(client, tools, processed_prompt, max_iters=max_iters)
             yield {"type": "done", "content": result}
         else:
             yield {"type": "error", "message": str(e)}

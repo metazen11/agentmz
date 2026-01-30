@@ -19,7 +19,7 @@ class ForgeApp(App):
 
     CSS_PATH = "forge.tcss"
     TITLE = "Forge"
-    ENABLE_COMMAND_PALETTE = False  # Hide palette, use menu instead
+    ENABLE_COMMAND_PALETTE = True  # Show palette with ctrl+p
 
     BINDINGS = [
         Binding("ctrl+enter", "submit", "Submit", show=True),
@@ -27,7 +27,7 @@ class ForgeApp(App):
         Binding("ctrl+v", "paste", "Paste", show=True),
         Binding("ctrl+c", "quit", "Quit", show=True),
         Binding("ctrl+l", "clear", "Clear", show=True),
-        Binding("ctrl+m", "menu", "Menu", show=True),
+        Binding("f1", "menu", "Help", show=True),
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("up", "history_prev", "Previous", show=False),
         Binding("down", "history_next", "Next", show=False),

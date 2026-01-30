@@ -71,10 +71,16 @@ class FileAutoComplete(AutoComplete if HAS_AUTOCOMPLETE else object):
             return ""
         return partial
 
-    def get_candidates(self, search_string: str) -> list[DropdownItem]:
+    def get_candidates(self, target_state) -> list[DropdownItem]:
         """Return matching file candidates."""
-        if not search_string and "@" not in (self.target.value or ""):
+        # target_state is a TargetState namedtuple with text and cursor_position
+        value = target_state.text if hasattr(target_state, 'text') else str(target_state)
+
+        if "@" not in value:
             return []
+
+        # Get the search string after @
+        search_string = self.get_search_string(target_state)
 
         files = self._scan_files()
         search_lower = search_string.lower()
@@ -90,17 +96,24 @@ class FileAutoComplete(AutoComplete if HAS_AUTOCOMPLETE else object):
 
         return matches
 
-    def apply_completion(self, target_state, item: DropdownItem) -> str:
+    def apply_completion(self, item, target_state) -> None:
         """Insert the selected file path after @."""
-        # target_state is a TargetState namedtuple with text and cursor_position
-        value = target_state.text if hasattr(target_state, 'text') else str(target_state)
-        at_pos = value.rfind("@")
-        if at_pos == -1:
-            return value + item.main
+        # Library calls with (highlighted_value, target_state)
+        # item is the selected value (string), target_state has current input text
+        selected_file = item.main if hasattr(item, 'main') else str(item)
+        current_text = target_state.text if hasattr(target_state, 'text') else str(target_state)
 
-        # Replace @partial with @filepath
-        prefix = value[:at_pos + 1]  # Keep the @
-        return prefix + item.main + " "
+        at_pos = current_text.rfind("@")
+        if at_pos == -1:
+            new_value = current_text + selected_file
+        else:
+            # Replace @partial with @filepath (keep @ for visual clarity)
+            prefix = current_text[:at_pos + 1]  # Keep the @
+            new_value = prefix + selected_file + " "
+
+        # Update the input widget directly (required for textual-autocomplete 4.0+)
+        self.target.value = new_value
+        self.target.cursor_position = len(new_value)
 
 
 # Keep FileInput for backwards compatibility but use the dropdown
