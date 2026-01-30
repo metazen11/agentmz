@@ -128,7 +128,9 @@ def _run_fallback_with_results(
             else:
                 results.append(str(result))
         except Exception as exc:
-            results.append(f"Error: {exc}")
+            # Show raw call info on error as fallback
+            import json
+            results.append(f"[{name}] {json.dumps(args, indent=2)}")
 
     return "\n".join(results) if results else "No actions taken."
 

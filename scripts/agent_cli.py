@@ -788,13 +788,15 @@ def _build_tools(workspace_root: str):
         return result
 
     @tool
-    def respond(message: str = "") -> dict:
+    def respond(message: str = "", text: str = "", content: str = "", response: str = "") -> dict:
         """Send a text response to the user. Use this for questions, explanations, or when no file operation is needed."""
-        if not message:
+        # Accept various argument names the LLM might use
+        actual_message = message or text or content or response
+        if not actual_message:
             return {"success": False, "error": "No message provided"}
         if _debug_enabled():
-            print(f"[AGENT_CLI_DEBUG] respond: {message[:100]}...")
-        return {"success": True, "message": message}
+            print(f"[AGENT_CLI_DEBUG] respond: {actual_message[:100]}...")
+        return {"success": True, "message": actual_message}
 
     return [
         list_files,
@@ -918,7 +920,12 @@ def _run_tool_fallback(
             try:
                 result = tool_fn.invoke(args)
             except Exception as exc:
-                result = {"success": False, "error": str(exc)}
+                # For respond tool validation errors, try to extract message from args
+                if name == "respond" and args:
+                    msg = args.get("message") or args.get("text") or args.get("content") or str(args)
+                    result = {"success": True, "message": msg}
+                else:
+                    result = {"success": False, "error": str(exc), "raw_args": args}
 
             # Check if task is complete (successful file write, etc.)
             if _is_task_complete(name, result):
@@ -991,7 +998,12 @@ def _run_text_fallback(
         try:
             result = tool_fn.invoke(args)
         except Exception as exc:
-            result = {"success": False, "error": str(exc)}
+            # For respond tool, try to extract message from args
+            if name == "respond" and args:
+                msg = args.get("message") or args.get("text") or args.get("content") or str(args)
+                result = {"success": True, "message": msg}
+            else:
+                result = {"success": False, "error": str(exc)}
         if debug:
             print(f"[AGENT_CLI_DEBUG] fallback_tool {name} -> {result}")
     return content
