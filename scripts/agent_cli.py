@@ -12,7 +12,7 @@ import os
 import re
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 try:
     from dotenv import load_dotenv
@@ -191,7 +191,7 @@ def _fresh_context_enabled() -> bool:
 def _is_task_complete(tool_name: str, result: Any) -> bool:
     """Check if a tool result indicates the task is complete."""
     # File operations that indicate completion
-    completion_tools = {"write_file", "apply_patch", "delete_file", "move_file", "copy_file"}
+    completion_tools = {"write_file", "apply_patch", "delete_file", "move_file", "copy_file", "aider_edit"}
     if tool_name not in completion_tools:
         return False
 
@@ -291,11 +291,15 @@ def _extract_tool_calls_from_text(text: str) -> list[dict]:
         if isinstance(data, dict):
             name = data.get("name")
             args = data.get("arguments") or data.get("args") or {}
-            # Validate write_file/apply_patch have real content
-            if name in ("write_file", "apply_patch"):
-                content = args.get("content") or args.get("patch") or ""
+            # Validate content for write_file/apply_patch
+            if name == "write_file":
+                content = args.get("content") or ""
                 if _is_placeholder_content(content):
                     continue  # Skip invalid tool calls
+            elif name == "apply_patch":
+                content = args.get("patch") or ""
+                if not isinstance(content, str) or not content.strip():
+                    continue
             if name:
                 calls.append({"name": name, "args": args})
         elif isinstance(data, list):
@@ -303,9 +307,13 @@ def _extract_tool_calls_from_text(text: str) -> list[dict]:
                 if isinstance(item, dict) and item.get("name"):
                     item_args = item.get("arguments") or item.get("args") or {}
                     item_name = item.get("name")
-                    if item_name in ("write_file", "apply_patch"):
-                        content = item_args.get("content") or item_args.get("patch") or ""
+                    if item_name == "write_file":
+                        content = item_args.get("content") or ""
                         if _is_placeholder_content(content):
+                            continue
+                    elif item_name == "apply_patch":
+                        content = item_args.get("patch") or ""
+                        if not isinstance(content, str) or not content.strip():
                             continue
                     calls.append({"name": item_name, "args": item_args})
     return calls
@@ -484,6 +492,97 @@ def _safe_path(base: str, user_path: str) -> str:
     if not joined.startswith(base_norm):
         raise ValueError("Path escapes workspace")
     return joined
+
+
+def _clamp_timeout(seconds: Any, default: int = 300, minimum: int = 10, maximum: int = 900) -> int:
+    """Clamp timeouts to a sane range."""
+    try:
+        value = int(seconds)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+def _list_workspace_code_files(workspace_root: str, limit: int = 50) -> list[str]:
+    """Return a list of code-ish files in the workspace root (non-recursive)."""
+    candidates: list[str] = []
+    if not os.path.isdir(workspace_root):
+        return candidates
+    for name in sorted(os.listdir(workspace_root)):
+        if name.startswith("."):
+            continue
+        full = os.path.join(workspace_root, name)
+        if os.path.isfile(full) and name.endswith(
+            (".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".json", ".md", ".txt", ".yaml", ".yml")
+        ):
+            candidates.append(name)
+        if len(candidates) >= limit:
+            break
+    return candidates
+
+
+def _aider_edit(workspace_root: str, prompt: str, files: list[str] | None = None, timeout: int | None = None) -> dict:
+    """Invoke aider CLI to edit existing files."""
+    if not prompt:
+        return {"success": False, "error": "prompt required"}
+    files = files or []
+
+    # Normalize and validate files
+    safe_files: list[str] = []
+    for path in files:
+        try:
+            safe_path = _safe_path(workspace_root, path)
+        except ValueError:
+            return {"success": False, "error": "Path escape detected; file must be inside workspace"}
+        rel = os.path.relpath(safe_path, workspace_root)
+        safe_files.append(rel)
+
+    if not safe_files:
+        safe_files = _list_workspace_code_files(workspace_root)
+
+    aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:4b")
+    ollama_base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11435")
+    timeout_sec = _clamp_timeout(timeout, default=300)
+
+    cmd: list[str] = [
+        "aider",
+        "--model",
+        aider_model,
+        "--auto-commits",
+        "--yes",
+        "--message",
+        prompt,
+    ]
+    cmd.extend(safe_files)
+
+    env = os.environ.copy()
+    env["OLLAMA_API_BASE"] = ollama_base
+
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=workspace_root,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            env=env,
+        )
+        return {
+            "success": result.returncode == 0,
+            "returncode": result.returncode,
+            "output": result.stdout,
+            "error": result.stderr if result.returncode != 0 else None,
+            "files": safe_files,
+            "model": aider_model,
+        }
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": f"aider timed out after {timeout_sec} seconds"}
+    except FileNotFoundError:
+        return {"success": False, "error": "aider executable not found in PATH"}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
 
 
 def _build_tools(workspace_root: str):
@@ -798,6 +897,11 @@ def _build_tools(workspace_root: str):
             print(f"[AGENT_CLI_DEBUG] respond: {actual_message[:100]}...")
         return {"success": True, "message": actual_message}
 
+    @tool
+    def aider_edit(prompt: str, files: list[str] | None = None, timeout: int = 300) -> dict:
+        """Use aider to edit existing files. Provide a prompt and optional file list."""
+        return _aider_edit(workspace_root, prompt=prompt, files=files or [], timeout=timeout)
+
     return [
         list_files,
         glob,
@@ -813,6 +917,7 @@ def _build_tools(workspace_root: str):
         grep,
         run_command,
         respond,
+        aider_edit,
     ]
 
 
@@ -868,7 +973,12 @@ def _run_tool_fallback(
         # Extract and log token usage
         token_usage = _extract_token_usage(response)
         if token_usage.get("total_tokens", 0) > 0:
-            print(f"[TOKENS] prompt={token_usage['prompt_tokens']} completion={token_usage['completion_tokens']} total={token_usage['total_tokens']}")
+            print(
+                "TOKENS "
+                f"prompt={token_usage['prompt_tokens']} "
+                f"completion={token_usage['completion_tokens']} "
+                f"total={token_usage['total_tokens']}"
+            )
 
         if trace:
             _trace_log("response", {
@@ -980,7 +1090,7 @@ def _run_text_fallback(
         "Respond only by emitting JSON tool calls with `name` and `arguments`, "
         "e.g. {\"name\":\"write_file\",\"arguments\":{\"path\":\"hello-world.html\",\"content\":\"<html>...</html>\"}}. "
         "Do not add prose outside the JSON payload. "
-        "We will execute those commands locally on your behalf."
+        "We will execute those commands locally on your behalf."  # nosec - instructional text only
     )
     messages = [
         SystemMessage(content=system_message),
@@ -1189,7 +1299,7 @@ def _coding_principles_message() -> str:
     principles = _load_coding_principles_text()
     return (
         "You are Forge. Think step-by-step: (1) understand the task, (2) plan your approach, "
-        "(3) execute one tool at a time. Keep responses minimal - output tool calls, not prose. "
+        "(3) execute one tool at a time. Keep responses minimal - output tool calls, not prose. "  # nosec - documentation string
         f"Principles:\n{principles}"
     )
 

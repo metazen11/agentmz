@@ -33,6 +33,11 @@ try:
 except ImportError as e:
     raise ImportError(f"Failed to import agent_cli: {e}. Ensure scripts/agent_cli.py exists.")
 
+try:
+    from forge.tools.registry import get_registry
+except Exception:
+    get_registry = None
+
 
 def _resolve_workspace(workspace: str) -> str:
     """Resolve workspace path - supports absolute paths and workspace names."""
@@ -46,6 +51,24 @@ def _resolve_workspace(workspace: str) -> str:
         return os.path.abspath(workspace)
     # Otherwise use the agent_cli resolver (workspaces/name)
     return _agent_resolve_workspace(workspace)
+
+
+def _build_tools_with_registry(workspace_root: str):
+    tools = _build_tools(workspace_root)
+    if get_registry is None:
+        return tools
+    try:
+        registry = get_registry(workspace_root)
+        loaded = registry.load_tools_from_workspace()
+        extra = registry.to_langchain_tools()
+        if extra:
+            tools = tools + extra
+            if os.environ.get("AGENT_CLI_DEBUG", "").lower() in {"1", "true", "yes"}:
+                print(f"[AGENT_CLI_DEBUG] loaded custom tools: {loaded}")
+    except Exception as exc:
+        if os.environ.get("AGENT_CLI_DEBUG", "").lower() in {"1", "true", "yes"}:
+            print(f"[AGENT_CLI_DEBUG] registry load failed: {exc}")
+    return tools
 
 
 def _preprocess_prompt(prompt: str) -> str:
@@ -96,6 +119,8 @@ TOOL_ALIASES = {
     "reply": "respond",
     "say": "respond",
     "answer": "respond",
+    "edit": "aider_edit",
+    "smart_edit": "aider_edit",
 }
 
 
@@ -260,7 +285,7 @@ def run_once(
         return f"Error: {e}"
 
     workspace_root = _resolve_workspace(workspace)
-    tools = _build_tools(workspace_root)
+    tools = _build_tools_with_registry(workspace_root)
     client_with_tools = client.bind_tools(tools, tool_choice="auto")
 
     # Preprocess prompt (strip @ from file references)
@@ -327,7 +352,7 @@ def run_with_session(
         return f"Error: {e}"
 
     workspace_root = _resolve_workspace(workspace)
-    tools = _build_tools(workspace_root)
+    tools = _build_tools_with_registry(workspace_root)
 
     # Preprocess prompt
     processed_prompt = _preprocess_prompt(prompt)
@@ -396,7 +421,7 @@ def run_streaming(
         return
 
     workspace_root = _resolve_workspace(workspace)
-    tools = _build_tools(workspace_root)
+    tools = _build_tools_with_registry(workspace_root)
 
     # Preprocess prompt (strip @ from file references)
     processed_prompt = _preprocess_prompt(prompt)
