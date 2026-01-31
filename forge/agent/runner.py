@@ -121,6 +121,7 @@ TOOL_ALIASES = {
     "answer": "respond",
     "edit": "aider_edit",
     "smart_edit": "aider_edit",
+    "patch": "aider_edit",
 }
 
 

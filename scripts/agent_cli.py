@@ -503,6 +503,20 @@ def _clamp_timeout(seconds: Any, default: int = 300, minimum: int = 10, maximum:
     return max(minimum, min(value, maximum))
 
 
+def _run_process(cmd: list[str], cwd: str, env: dict, timeout: int):
+    """Thin wrapper around subprocess.run for easy test patching."""
+    import subprocess
+
+    return subprocess.run(
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=env,
+    )
+
+
 def _list_workspace_code_files(workspace_root: str, limit: int = 50) -> list[str]:
     """Return a list of code-ish files in the workspace root (non-recursive)."""
     candidates: list[str] = []
@@ -541,7 +555,12 @@ def _aider_edit(workspace_root: str, prompt: str, files: list[str] | None = None
         safe_files = _list_workspace_code_files(workspace_root)
 
     aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:4b")
-    ollama_base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11435")
+    # Prefer Forge-specific overrides, then Ollama defaults
+    ollama_base = (
+        os.environ.get("FORGE_OLLAMA_BASE")
+        or os.environ.get("OLLAMA_API_BASE")
+        or "http://localhost:11435"
+    )
     timeout_sec = _clamp_timeout(timeout, default=300)
 
     cmd: list[str] = [
@@ -557,18 +576,10 @@ def _aider_edit(workspace_root: str, prompt: str, files: list[str] | None = None
 
     env = os.environ.copy()
     env["OLLAMA_API_BASE"] = ollama_base
-
-    import subprocess
+    env["WORKSPACE"] = workspace_root
 
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=workspace_root,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-            env=env,
-        )
+        result = _run_process(cmd, cwd=workspace_root, env=env, timeout=timeout_sec)
         return {
             "success": result.returncode == 0,
             "returncode": result.returncode,

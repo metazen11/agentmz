@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -41,7 +40,7 @@ def test_aider_edit_invokes_aider_with_workspace_cwd(tmp_path, monkeypatch):
 
         return Res()
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr("scripts.agent_cli._run_process", fake_run)
 
     file_path = tmp_path / "app.py"
     file_path.write_text("print('hi')", encoding="utf-8")
@@ -74,7 +73,7 @@ def test_aider_edit_defaults_files_to_workspace(tmp_path, monkeypatch):
 
         return Res()
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr("scripts.agent_cli._run_process", fake_run)
 
     # Two files in workspace; expect both passed when files not provided
     (tmp_path / "a.py").write_text("print(1)", encoding="utf-8")
@@ -105,7 +104,7 @@ def test_aider_edit_uses_model_env_defaults(monkeypatch, tmp_path):
 
         return Res()
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr("scripts.agent_cli._run_process", fake_run)
 
     tool = _get_tool("aider_edit", tmp_path)
     result = tool.invoke({"prompt": "noop"})
