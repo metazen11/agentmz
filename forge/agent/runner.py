@@ -287,6 +287,80 @@ def run_once(
         return f"Error: {e}"
 
 
+def run_with_session(
+    session,  # forge.agent.session.Session
+    prompt: str,
+    workspace: str = "poc",
+    ollama_url: str = "http://localhost:11435",
+    max_iters: int = 6,
+    timeout: int = 120,
+) -> str:
+    """
+    Run a prompt with session context (conversation history).
+
+    Uses the session's message history for multi-turn conversation.
+
+    Args:
+        session: Session instance with conversation history
+        prompt: The current prompt
+        workspace: Workspace path
+        ollama_url: Ollama API base URL
+        max_iters: Maximum agent iterations
+        timeout: Timeout per LLM call
+
+    Returns:
+        Agent response text
+    """
+    if not _check_ollama_service(ollama_url, timeout=5.0, verify=True):
+        return f"Error: Ollama unreachable at {ollama_url}"
+
+    try:
+        client = _build_client(
+            model=session.model,
+            base_url=ollama_url,
+            ssl_verify=True,
+            temperature=0,
+            seed=None,
+            timeout=float(timeout),
+        )
+    except Exception as e:
+        return f"Error: {e}"
+
+    workspace_root = _resolve_workspace(workspace)
+    tools = _build_tools(workspace_root)
+
+    # Preprocess prompt
+    processed_prompt = _preprocess_prompt(prompt)
+
+    # Build context with history summary for multi-turn
+    history_context = session.get_history_summary(last_n=5)
+    if history_context and session.stats.turn_count > 1:
+        # Inject recent history for context
+        context_prompt = f"Recent conversation:\n{history_context}\n\nCurrent request: {processed_prompt}"
+    else:
+        context_prompt = processed_prompt
+
+    fallback_parser = os.environ.get("AGENT_CLI_TOOL_FALLBACK", "1").lower() in {"1", "true", "yes"}
+
+    try:
+        client_with_tools = client.bind_tools(tools, tool_choice="auto")
+        result = _run_loop(
+            client_with_tools,
+            tools,
+            context_prompt,
+            max_iters=max_iters,
+            fallback_parser=fallback_parser,
+            invoke_timeout=float(timeout),
+            invoke_retries=2,
+            retry_backoff=5.0,
+        )
+        return result
+    except Exception as e:
+        if ResponseError is not None and isinstance(e, ResponseError) and "does not support tools" in str(e):
+            return _run_fallback_with_results(client, tools, context_prompt, max_iters=max_iters)
+        return f"Error: {e}"
+
+
 def run_streaming(
     prompt: str,
     workspace: str = "poc",
