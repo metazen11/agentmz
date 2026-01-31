@@ -517,6 +517,17 @@ def _run_process(cmd: list[str], cwd: str, env: dict, timeout: int):
     )
 
 
+def _is_blocked_shell(command: str) -> bool:
+    """Block obviously dangerous shell calls."""
+    lowered = command.lower()
+    if "sudo" in lowered:
+        return True
+    # Block rm with common flags
+    if re.search(r"\brm\b", lowered):
+        return True
+    return False
+
+
 def _list_workspace_code_files(workspace_root: str, limit: int = 50) -> list[str]:
     """Return a list of code-ish files in the workspace root (non-recursive)."""
     candidates: list[str] = []
@@ -913,6 +924,35 @@ def _build_tools(workspace_root: str):
         """Use aider to edit existing files. Provide a prompt and optional file list."""
         return _aider_edit(workspace_root, prompt=prompt, files=files or [], timeout=timeout)
 
+    @tool
+    def run_shell(command: str, timeout: int = 30) -> dict:
+        """Run a shell command in the workspace (guarded: blocks rm and sudo)."""
+        if not command or not isinstance(command, str):
+            return {"success": False, "error": "command required"}
+        if _is_blocked_shell(command):
+            return {"success": False, "error": "command blocked for safety"}
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                cwd=workspace_root,
+                capture_output=True,
+                text=True,
+                timeout=_clamp_timeout(timeout, default=30),
+            )
+            return {
+                "success": result.returncode == 0,
+                "returncode": result.returncode,
+                "stdout": result.stdout.strip(),
+                "stderr": result.stderr.strip(),
+            }
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": f"command timed out after {timeout}s"}
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
+
     return [
         list_files,
         glob,
@@ -929,6 +969,7 @@ def _build_tools(workspace_root: str):
         run_command,
         respond,
         aider_edit,
+        run_shell,
     ]
 
 

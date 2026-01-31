@@ -4,6 +4,7 @@ Maintains state across turns for natural conversation flow.
 """
 import json
 import time
+import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -30,7 +31,7 @@ class SessionStats:
     total_tokens: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
-    max_context: int = 8192  # Default for most small models
+    max_context: int = os.getenv("MAX_CONTEXT", 32768)  # Default for most small models
     turn_count: int = 0
     start_time: float = field(default_factory=time.time)
 
