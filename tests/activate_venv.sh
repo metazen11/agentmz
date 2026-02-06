@@ -1,1 +1,3 @@
-../scripts/activate_venv.sh
+#!/usr/bin/env bash
+# placeholder activate script
+

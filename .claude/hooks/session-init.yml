@@ -1,0 +1,34 @@
+# Session Init Hook Configuration
+# ================================
+# Controls what gets injected into Claude Code sessions.
+#
+# Modes:
+#   - off:       Disabled, outputs "Success" only
+#   - reminder:  Short reminder text only
+#   - sections:  Extract specific sections from source file
+#   - full:      Inject entire source file
+#
+# To switch modes, just change the 'mode' value and save.
+
+mode: reminder
+
+# Which sections to extract (for 'sections' mode)
+# Section numbers from AGENTS.md:
+#   0  = Prime Directive
+#   1  = Core Axioms
+#   2  = Engineering Lifecycle
+#   5  = Rules of Engagement
+#   17 = Session Startup Protocol
+sections: [0, 5]
+
+# Source file (relative to project root)
+source_file: AGENTS.md
+
+# Maximum lines to output (prevents huge context injection)
+max_lines: 150
+
+# Prefix shown before content
+prefix: "SESSION DIRECTIVES (from AGENTS.md):"
+
+# Text for 'reminder' mode
+reminder_text: "ACTION REQUIRED: Read AGENTS.md now. Compliance is mandatory."

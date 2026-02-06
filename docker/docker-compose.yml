@@ -1,9 +1,13 @@
 name: wfhub-v2
 
+# Load env vars for variable interpolation in this file
+env_file:
+  - ../.env
+
 services:
-  # PostgreSQL database for v2
+  # PostgreSQL database for v2 (with pgvector for embeddings)
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: wfhub-v2-db
     hostname: wfhub-v2-db
     env_file:
@@ -12,6 +16,7 @@ services:
       - "5433:5432"
     volumes:
       - wfhub_v2_pgdata:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wfhub -d agentic"]
       interval: 30s

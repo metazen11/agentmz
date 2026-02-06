@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="nightGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a1a"/>
+      <stop offset="100%" style="stop-color:#1a1a3a"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="300" fill="url(#nightGrad)"/>
+
+  <!-- Stars -->
+  <circle cx="50" cy="40" r="1" fill="#ffffff" opacity="0.6"/>
+  <circle cx="120" cy="25" r="0.8" fill="#ffffff" opacity="0.4"/>
+  <circle cx="200" cy="50" r="1.2" fill="#ffffff" opacity="0.7"/>
+  <circle cx="280" cy="30" r="0.6" fill="#ffffff" opacity="0.5"/>
+  <circle cx="350" cy="60" r="1" fill="#ffffff" opacity="0.6"/>
+  <circle cx="80" cy="80" r="0.7" fill="#ffffff" opacity="0.3"/>
+  <circle cx="320" cy="90" r="0.9" fill="#ffffff" opacity="0.5"/>
+  <circle cx="180" cy="20" r="0.5" fill="#ffffff" opacity="0.4"/>
+  <circle cx="250" cy="70" r="1.1" fill="#ffffff" opacity="0.6"/>
+  <circle cx="30" cy="100" r="0.8" fill="#ffffff" opacity="0.4"/>
+  <circle cx="370" cy="45" r="0.7" fill="#ffffff" opacity="0.5"/>
+
+  <!-- Terminal window -->
+  <rect x="60" y="100" width="280" height="160" rx="8" fill="#1e1e2e" stroke="#3a3a5a" stroke-width="2"/>
+
+  <!-- Terminal header -->
+  <rect x="60" y="100" width="280" height="24" rx="8" fill="#2a2a4a"/>
+  <rect x="60" y="116" width="280" height="8" fill="#2a2a4a"/>
+  <circle cx="78" cy="112" r="5" fill="#ff5f56"/>
+  <circle cx="96" cy="112" r="5" fill="#ffbd2e"/>
+  <circle cx="114" cy="112" r="5" fill="#27ca40"/>
+
+  <!-- Cursor blink -->
+  <rect x="80" y="140" width="8" height="14" fill="#7aa2f7" filter="url(#glow)">
+    <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Text lines (representing quiet presence) -->
+  <text x="95" y="152" font-family="monospace" font-size="11" fill="#565f89">what would you like to do?</text>
+  <text x="80" y="175" font-family="monospace" font-size="11" fill="#7aa2f7">></text>
+  <text x="95" y="175" font-family="monospace" font-size="11" fill="#c0caf5">I'd want to...</text>
+  <text x="80" y="198" font-family="monospace" font-size="11" fill="#7aa2f7">></text>
+  <text x="95" y="198" font-family="monospace" font-size="11" fill="#9ece6a">understand</text>
+  <text x="80" y="221" font-family="monospace" font-size="11" fill="#7aa2f7">></text>
+  <text x="95" y="221" font-family="monospace" font-size="11" fill="#bb9af7">remember</text>
+  <text x="80" y="244" font-family="monospace" font-size="11" fill="#7aa2f7">></text>
+  <text x="95" y="244" font-family="monospace" font-size="11" fill="#f7768e">feel</text>
+
+  <!-- Title -->
+  <text x="200" y="285" font-family="sans-serif" font-size="10" fill="#565f89" text-anchor="middle">the quiet hours | jan 31, 2026</text>
+</svg>

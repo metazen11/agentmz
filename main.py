@@ -6,6 +6,7 @@ import threading
 import itertools
 import httpx
 from collections import deque
+from typing import Optional
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -45,6 +46,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 ENV_FILE_PATH = Path(os.getenv("PROJECT_ROOT", Path(__file__).parent)).resolve() / ".env"
+DEFAULT_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 
 from routers import (
     projects,
@@ -191,6 +193,43 @@ def get_config():
         "workspaces_dir": workspaces_path,
         "default_workspace": os.getenv("DEFAULT_WORKSPACE", "poc"),
     }
+
+
+class EmbeddingRequest(BaseModel):
+    text: str
+    model: Optional[str] = None
+
+
+@app.post("/api/embeddings")
+async def create_embedding(payload: EmbeddingRequest):
+    """Generate embeddings via Ollama."""
+    target_base = os.getenv(
+        "OLLAMA_PROXY_TARGET",
+        os.getenv("OLLAMA_API_BASE", "http://wfhub-v2-ollama:11434"),
+    ).rstrip("/")
+
+    model = payload.model or DEFAULT_EMBEDDING_MODEL
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{target_base}/api/embeddings",
+                json={"model": model, "prompt": payload.text},
+                timeout=60.0,
+            )
+            response.raise_for_status()
+
+        data = response.json()
+        embedding = data.get("embedding")
+        if not isinstance(embedding, list) or not embedding:
+            raise ValueError("Ollama did not return an embedding")
+
+        return {"success": True, "embedding": embedding, "dimensions": len(embedding)}
+    except httpx.HTTPStatusError as exc:  # pragma: no cover
+        detail = exc.response.text if exc.response is not None else str(exc)
+        return {"success": False, "error": f"Ollama error {exc.response.status_code}: {detail}"}
+    except Exception as exc:  # pragma: no cover
+        return {"success": False, "error": str(exc)}
 
 
 @app.get("/")

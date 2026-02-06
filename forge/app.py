@@ -143,6 +143,16 @@ class ForgeApp(App):
         elif cmd in ("cp", "mv", "mkdir", "touch", "rm", "cat", "head", "tail", "grep", "curl", "git"):
             # Shell commands - run directly
             return self._cmd_shell(prompt, chat)
+        elif cmd == "/config" or cmd == "config":
+            from forge.config import handle_config_command
+            result = handle_config_command(arg)
+            chat.write(f"[green]{result}[/green]\n")
+            # If model changed, update TUI state
+            if "Model set to:" in result and arg:
+                model_name = arg.split()[0]
+                self.model = model_name
+                status.set_model(model_name)
+            return True
 
         return False
 
@@ -223,8 +233,14 @@ class ForgeApp(App):
         chat.write("  [cyan]pwd[/cyan]           Show current workspace\n")
         chat.write("  [cyan]ls [path][/cyan]     List files\n")
         chat.write("  [cyan]model [name][/cyan]  Show/set model\n")
+        chat.write("  [cyan]/config[/cyan]       Show/edit settings\n")
         chat.write("  [cyan]clear[/cyan]         Clear chat\n")
         chat.write("  [cyan]help[/cyan]          Show this help\n")
+        chat.write("\n[bold]/config commands:[/bold]\n")
+        chat.write("  [cyan]/config[/cyan]                 Show all settings\n")
+        chat.write("  [cyan]/config model NAME[/cyan]      Set model\n")
+        chat.write("  [cyan]/config list-models[/cyan]     Discover from Ollama\n")
+        chat.write("  [cyan]/config workspace DIR[/cyan]   Set workspace\n")
         chat.write("\n[bold]Shell commands (run directly):[/bold]\n")
         chat.write("  [cyan]cp, mv, rm[/cyan]    File operations\n")
         chat.write("  [cyan]mkdir, touch[/cyan]  Create dirs/files\n")
@@ -314,8 +330,10 @@ class ForgeApp(App):
             return (["clip"], ["powershell", "-command", "Get-Clipboard"])
 
     def action_copy(self) -> None:
-        """Copy last response to clipboard."""
-        if not self.last_response:
+        """Copy full conversation to clipboard."""
+        chat = self.query_one("#chat", ChatDisplay)
+        content = chat.get_plain_text()
+        if not content.strip():
             self.notify("Nothing to copy")
             return
         try:
@@ -325,8 +343,8 @@ class ForgeApp(App):
                 stdin=subprocess.PIPE,
                 text=True,
             )
-            process.communicate(input=self.last_response)
-            self.notify(f"Copied {len(self.last_response)} chars")
+            process.communicate(input=content)
+            self.notify(f"Copied {len(content)} chars")
         except Exception as e:
             self.notify(f"Copy failed: {e}")
 

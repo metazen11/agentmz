@@ -412,3 +412,59 @@ class TaskExternalLink(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+# ============================================================================
+# Project Memory Models (pgvector embeddings)
+# ============================================================================
+
+try:
+    from pgvector.sqlalchemy import Vector
+    PGVECTOR_AVAILABLE = True
+except ImportError:
+    Vector = None
+    PGVECTOR_AVAILABLE = False
+
+
+class ProjectKnowledge(Base):
+    """Stores code snippets and documentation with embeddings for semantic search.
+
+    Used by Forge agents to retrieve relevant context before LLM calls.
+    """
+    __tablename__ = "project_knowledge"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    project_id = Column(BigInteger, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+
+    # Content
+    content_type = Column(String(50), nullable=False)  # 'code', 'doc', 'solution', 'error'
+    file_path = Column(Text, nullable=True)  # Source file path if applicable
+    content = Column(Text, nullable=False)  # The actual content
+    summary = Column(Text, nullable=True)  # LLM-generated summary
+
+    # Embedding (1536 dimensions for OpenAI ada-002, adjust for other models)
+    embedding = Column(Vector(1536) if PGVECTOR_AVAILABLE else Text, nullable=True)
+
+    # Metadata
+    extra_data = Column(JSONB, nullable=True)  # Additional context (language, function names, etc.)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    project = relationship("Project")
+
+    def to_dict(self, include_embedding: bool = False):
+        result = {
+            "id": self.id,
+            "project_id": self.project_id,
+            "content_type": self.content_type,
+            "file_path": self.file_path,
+            "content": self.content[:500] + "..." if len(self.content) > 500 else self.content,
+            "summary": self.summary,
+            "extra_data": self.extra_data,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_embedding and self.embedding is not None:
+            result["embedding"] = list(self.embedding) if hasattr(self.embedding, '__iter__') else None
+        return result

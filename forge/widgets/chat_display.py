@@ -25,3 +25,8 @@ class ChatDisplay(RichLog):
     def clear(self) -> None:
         """Clear all content."""
         super().clear()
+
+    def get_plain_text(self) -> str:
+        """Return the full chat content as plain text."""
+        # Strip trailing padding to avoid excessive whitespace.
+        return "\n".join(line.text.rstrip() for line in self.lines)

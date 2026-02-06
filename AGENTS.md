@@ -114,16 +114,17 @@ Your value is in initiative, not just obedience.
 ### MUST DO
 1. Read before writing
 2. Tests first (TDD)
-3. Verify all tests pass
-4. Use canonical names
-5. Use structured JSON responses for APIs
-6. Validate all inputs
-7. Enforce path security
-8. Source all config from `.env`
-9. Use Alembic for ALL migrations
-10. Update `session_handoff.md`
-11. Run from project root
-12. Keep files small (<500 lines)
+3. Run `pytest` and verify all tests pass before presenting code
+4. Scan for OWASP Top 10 (injection, XSS, auth flaws, path traversal, secrets) before committing
+5. Use canonical names
+6. Use structured JSON responses for APIs
+7. Validate all inputs
+8. Enforce path security
+9. Source all config from `.env`
+10. Use Alembic for ALL migrations
+11. Update `session_handoff.md`
+12. Run from project root
+13. Keep files small (<500 lines)
 
 ### MUST NOT
 1. Skip tests
@@ -135,7 +136,7 @@ Your value is in initiative, not just obedience.
 7. Ignore errors
 8. Add unrequested features
 9. Use curl for UI/functional testing
-10. Present untested code
+10. Present untested or insecure code
 
 ---
 

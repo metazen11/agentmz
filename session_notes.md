@@ -18,3 +18,4 @@
 - Added AGENT_CLI_TOOL_CHOICE + AGENT_CLI_TOOL_FALLBACK. Fallback parses JSON tool calls in text.
 - qwen3:1.7b pull timed out; still not available.
 - Set Agent CLI default base to http://localhost:11435 until HTTPS trust is fixed.
+- New request: add deterministic per-model tests for HTML generation and JS edit using runner; agent named Forge, keep system agnostic.

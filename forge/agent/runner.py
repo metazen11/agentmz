@@ -33,6 +33,11 @@ try:
 except ImportError as e:
     raise ImportError(f"Failed to import agent_cli: {e}. Ensure scripts/agent_cli.py exists.")
 
+try:
+    from forge.tools.registry import get_registry
+except Exception:
+    get_registry = None
+
 
 def _resolve_workspace(workspace: str) -> str:
     """Resolve workspace path - supports absolute paths and workspace names."""
@@ -46,6 +51,24 @@ def _resolve_workspace(workspace: str) -> str:
         return os.path.abspath(workspace)
     # Otherwise use the agent_cli resolver (workspaces/name)
     return _agent_resolve_workspace(workspace)
+
+
+def _build_tools_with_registry(workspace_root: str):
+    tools = _build_tools(workspace_root)
+    if get_registry is None:
+        return tools
+    try:
+        registry = get_registry(workspace_root)
+        loaded = registry.load_tools_from_workspace()
+        extra = registry.to_langchain_tools()
+        if extra:
+            tools = tools + extra
+            if os.environ.get("AGENT_CLI_DEBUG", "").lower() in {"1", "true", "yes"}:
+                print(f"[AGENT_CLI_DEBUG] loaded custom tools: {loaded}")
+    except Exception as exc:
+        if os.environ.get("AGENT_CLI_DEBUG", "").lower() in {"1", "true", "yes"}:
+            print(f"[AGENT_CLI_DEBUG] registry load failed: {exc}")
+    return tools
 
 
 def _preprocess_prompt(prompt: str) -> str:
@@ -96,6 +119,9 @@ TOOL_ALIASES = {
     "reply": "respond",
     "say": "respond",
     "answer": "respond",
+    "edit": "aider_edit",
+    "smart_edit": "aider_edit",
+    "patch": "aider_edit",
 }
 
 
@@ -260,7 +286,7 @@ def run_once(
         return f"Error: {e}"
 
     workspace_root = _resolve_workspace(workspace)
-    tools = _build_tools(workspace_root)
+    tools = _build_tools_with_registry(workspace_root)
     client_with_tools = client.bind_tools(tools, tool_choice="auto")
 
     # Preprocess prompt (strip @ from file references)
@@ -284,6 +310,80 @@ def run_once(
         if ResponseError is not None and isinstance(e, ResponseError) and "does not support tools" in str(e):
             # Use improved text fallback that shows results
             return _run_fallback_with_results(client, tools, processed_prompt, max_iters=max_iters)
+        return f"Error: {e}"
+
+
+def run_with_session(
+    session,  # forge.agent.session.Session
+    prompt: str,
+    workspace: str = "poc",
+    ollama_url: str = "http://localhost:11435",
+    max_iters: int = 6,
+    timeout: int = 120,
+) -> str:
+    """
+    Run a prompt with session context (conversation history).
+
+    Uses the session's message history for multi-turn conversation.
+
+    Args:
+        session: Session instance with conversation history
+        prompt: The current prompt
+        workspace: Workspace path
+        ollama_url: Ollama API base URL
+        max_iters: Maximum agent iterations
+        timeout: Timeout per LLM call
+
+    Returns:
+        Agent response text
+    """
+    if not _check_ollama_service(ollama_url, timeout=5.0, verify=True):
+        return f"Error: Ollama unreachable at {ollama_url}"
+
+    try:
+        client = _build_client(
+            model=session.model,
+            base_url=ollama_url,
+            ssl_verify=True,
+            temperature=0,
+            seed=None,
+            timeout=float(timeout),
+        )
+    except Exception as e:
+        return f"Error: {e}"
+
+    workspace_root = _resolve_workspace(workspace)
+    tools = _build_tools_with_registry(workspace_root)
+
+    # Preprocess prompt
+    processed_prompt = _preprocess_prompt(prompt)
+
+    # Build context with history summary for multi-turn
+    history_context = session.get_history_summary(last_n=5)
+    if history_context and session.stats.turn_count > 1:
+        # Inject recent history for context
+        context_prompt = f"Recent conversation:\n{history_context}\n\nCurrent request: {processed_prompt}"
+    else:
+        context_prompt = processed_prompt
+
+    fallback_parser = os.environ.get("AGENT_CLI_TOOL_FALLBACK", "1").lower() in {"1", "true", "yes"}
+
+    try:
+        client_with_tools = client.bind_tools(tools, tool_choice="auto")
+        result = _run_loop(
+            client_with_tools,
+            tools,
+            context_prompt,
+            max_iters=max_iters,
+            fallback_parser=fallback_parser,
+            invoke_timeout=float(timeout),
+            invoke_retries=2,
+            retry_backoff=5.0,
+        )
+        return result
+    except Exception as e:
+        if ResponseError is not None and isinstance(e, ResponseError) and "does not support tools" in str(e):
+            return _run_fallback_with_results(client, tools, context_prompt, max_iters=max_iters)
         return f"Error: {e}"
 
 
@@ -322,7 +422,7 @@ def run_streaming(
         return
 
     workspace_root = _resolve_workspace(workspace)
-    tools = _build_tools(workspace_root)
+    tools = _build_tools_with_registry(workspace_root)
 
     # Preprocess prompt (strip @ from file references)
     processed_prompt = _preprocess_prompt(prompt)

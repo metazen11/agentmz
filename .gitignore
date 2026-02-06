@@ -20,3 +20,5 @@ session_*.md
 @*
 # Windows reserved device name artifact
 nul
+.idea/
+path/

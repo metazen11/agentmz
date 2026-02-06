@@ -16,3 +16,4 @@
 - [AGENTS.md](AGENTS.md) - Full operational framework
 - [session_handoff.md](session_handoff.md) - Current session state
 - [README.md](README.md) - Project overview
+- [.claude/CLAUDE.md](.claude/CLAUDE.md) - **READ THIS FIRST** - About Mauricio and this project
