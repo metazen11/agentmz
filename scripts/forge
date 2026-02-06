@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Forge CLI wrapper - sets up env and passes all args
+REPO_ROOT="/mnt/c/dropbox/_coding/agentmz"
+
+# Activate venv
+source "$REPO_ROOT/venv/bin/activate"
+
+# Set PYTHONPATH
+export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
+
+# Default workspace to cwd if not specified
+if [[ ! "$*" =~ (-w[[:space:]]|--workspace[[:space:]]|--workspace=) ]]; then
+    exec python -m forge main --workspace "$(pwd)" "$@"
+else
+    exec python -m forge main "$@"
+fi
