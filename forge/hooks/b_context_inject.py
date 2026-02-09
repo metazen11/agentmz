@@ -2,6 +2,9 @@
 
 This enables RAG (Retrieval Augmented Generation) by automatically searching
 the knowledge base for relevant context and injecting it into the prompt.
+
+Also provides failure hints: when a tool fails, the next LLM call gets
+suggestions from past similar failures (gotchas) and solutions (golden patterns).
 """
 import logging
 import os
@@ -18,6 +21,9 @@ MIN_SIMILARITY_THRESHOLD = float(os.environ.get("RAG_MIN_SIMILARITY", "0.3"))
 
 # Lazy import to avoid circular dependencies
 _memory = None
+
+# Track recent failures for hint injection
+_last_failure: dict[str, Any] | None = None
 
 
 def _get_memory():
@@ -37,6 +43,10 @@ def _get_memory():
 def pre_tool(tool_name: str, args: dict) -> bool:
     """Inject relevant context into LLM prompts.
 
+    Injects two types of context:
+    1. Knowledge base context (from ProjectMemory)
+    2. Failure hints (from agentmem observations, if previous tool failed)
+
     Args:
         tool_name: Name of the tool about to execute
         args: Arguments that will be passed to the tool (mutable)
@@ -53,10 +63,17 @@ def pre_tool(tool_name: str, args: dict) -> bool:
         return True
 
     try:
-        context = _fetch_relevant_context(prompt)
-        if context:
-            # Inject context into the prompt
-            enhanced_prompt = _build_enhanced_prompt(prompt, context)
+        # Fetch knowledge base context
+        kb_context = _fetch_relevant_context(prompt)
+
+        # Fetch failure hints (if previous tool failed)
+        failure_hints = _fetch_failure_hints()
+
+        # Build enhanced prompt with both contexts
+        if kb_context or failure_hints:
+            enhanced_prompt = _build_enhanced_prompt_with_hints(
+                prompt, kb_context, failure_hints
+            )
             # Update args in place (hooks can modify args)
             if "prompt" in args:
                 args["prompt"] = enhanced_prompt
@@ -65,7 +82,11 @@ def pre_tool(tool_name: str, args: dict) -> bool:
             elif "query" in args:
                 args["query"] = enhanced_prompt
 
-            logger.debug(f"Injected {len(context)} chars of context for {tool_name}")
+            logger.debug(
+                f"Injected context for {tool_name}: "
+                f"kb={len(kb_context) if kb_context else 0} chars, "
+                f"hints={'yes' if failure_hints else 'no'}"
+            )
 
     except Exception as e:
         # Best effort - don't block the tool call
@@ -144,6 +165,42 @@ def _build_enhanced_prompt(original_prompt: str, context: str) -> str:
 {original_prompt}"""
 
 
+def _build_enhanced_prompt_with_hints(
+    original_prompt: str,
+    kb_context: Optional[str],
+    failure_hints: Optional[str],
+) -> str:
+    """Combine knowledge base context and failure hints with original prompt.
+
+    Args:
+        original_prompt: User's original prompt
+        kb_context: Context from knowledge base (may be None)
+        failure_hints: Hints from past failures (may be None)
+
+    Returns:
+        Enhanced prompt with all contexts
+    """
+    parts = []
+
+    # Add failure hints first (most relevant for immediate recovery)
+    if failure_hints:
+        parts.append(failure_hints)
+
+    # Add knowledge base context
+    if kb_context:
+        parts.append("## Relevant Context from Project Knowledge\n")
+        parts.append(kb_context)
+
+    # Add separator and original prompt
+    if parts:
+        parts.append("\n---\n")
+
+    parts.append("## User Request\n")
+    parts.append(original_prompt)
+
+    return "\n".join(parts)
+
+
 def inject_context(prompt: str, project_id: Optional[int] = None) -> str:
     """Public API for manually injecting context into a prompt.
 
@@ -165,3 +222,89 @@ def inject_context(prompt: str, project_id: Optional[int] = None) -> str:
     if context:
         return _build_enhanced_prompt(prompt, context)
     return prompt
+
+
+# =============================================================================
+# Failure Hint Injection (from agentmem observations)
+# =============================================================================
+
+def post_tool(tool_name: str, args: dict, result: Any) -> None:
+    """Track tool failures for hint injection.
+
+    When a tool fails, we store the failure info. The next LLM call
+    will search for similar failures and inject hints.
+    """
+    global _last_failure
+
+    # Check if this was a failure
+    if _is_failure(result):
+        _last_failure = {
+            "tool": tool_name,
+            "args": args,
+            "result": result,
+            "error_output": _extract_error_output(result),
+        }
+        logger.debug(f"Tracked failure for {tool_name}")
+    else:
+        # Clear on success - no hints needed
+        _last_failure = None
+
+
+def _is_failure(result: Any) -> bool:
+    """Check if result indicates failure."""
+    if result is None:
+        return False
+    if isinstance(result, dict):
+        if result.get("success") is False:
+            return True
+        if result.get("exit_code", 0) != 0:
+            return True
+        if result.get("error"):
+            return True
+    return False
+
+
+def _extract_error_output(result: Any) -> str:
+    """Extract error message from result."""
+    if isinstance(result, dict):
+        if "error" in result:
+            return str(result["error"])
+        if "output" in result:
+            return str(result["output"])[:500]
+        if "message" in result:
+            return str(result["message"])
+    return str(result)[:500]
+
+
+def _fetch_failure_hints() -> Optional[str]:
+    """Fetch hints from agentmem for the last failure.
+
+    Returns:
+        Formatted hints string, or None if no hints found
+    """
+    global _last_failure
+
+    if not _last_failure:
+        return None
+
+    try:
+        from forge.agentmem.retrieval import get_hints_for_failure, format_hints_for_prompt
+
+        hints = get_hints_for_failure(
+            tool=_last_failure["tool"],
+            error_output=_last_failure["error_output"],
+            limit=3,
+        )
+
+        if hints:
+            logger.debug(f"Found {len(hints)} hints for {_last_failure['tool']} failure")
+            # Clear failure after fetching hints
+            _last_failure = None
+            return format_hints_for_prompt(hints)
+
+    except ImportError:
+        logger.debug("agentmem not available for failure hints")
+    except Exception as e:
+        logger.debug(f"Failed to fetch failure hints: {e}")
+
+    return None

@@ -29,7 +29,25 @@ Base = declarative_base()
 
 
 def get_db():
-    """Get database session."""
+    """Get database session (FastAPI dependency injection style)."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def get_session():
+    """Get database session as context manager.
+
+    Usage:
+        with get_session() as session:
+            session.query(Model).all()
+    """
     db = SessionLocal()
     try:
         yield db

@@ -203,6 +203,85 @@ def _is_task_complete(tool_name: str, result: Any) -> bool:
     return False
 
 
+# Parameter aliases for common LLM mistakes - expand as issues are found
+PARAM_ALIASES: dict[str, dict[str, str]] = {
+    "write_file": {"filename": "path", "file": "path", "filepath": "path", "name": "path",
+                   "data": "content", "text": "content", "body": "content"},
+    "read_file": {"filename": "path", "file": "path", "filepath": "path", "name": "path"},
+    "delete_file": {"filename": "path", "file": "path", "filepath": "path", "name": "path"},
+    "move_file": {"source": "src", "from": "src", "old": "src", "old_path": "src",
+                  "destination": "dst", "to": "dst", "new": "dst", "new_path": "dst"},
+    "copy_file": {"source": "src", "from": "src", "destination": "dst", "to": "dst"},
+    "apply_patch": {"diff": "patch", "changes": "patch"},
+    "grep": {"regex": "pattern", "search": "pattern", "query": "pattern"},
+    "glob": {"glob": "pattern", "search": "pattern"},
+    "aider_edit": {"prompt_file": "prompt", "file": "files", "file_list": "files"},
+}
+
+
+def _normalize_tool_params(tool_name: str, args: dict) -> dict:
+    """Normalize parameter names using alias map."""
+    aliases = PARAM_ALIASES.get(tool_name, {})
+    if not aliases:
+        return args
+    return {aliases.get(k, k): v for k, v in args.items()}
+
+
+def _normalize_tool_name(name: str, args: dict) -> tuple[str, dict]:
+    """Normalize tool names and infer missing params from name patterns.
+
+    Examples:
+        create_prompter_py -> write_file with path="prompter.py"
+        read_config_json -> read_file with path="config.json"
+        delete_old_backup -> delete_file with path="old_backup"
+    """
+    if not name:
+        return name, args
+
+    # Pattern: create_<filename> or write_<filename>
+    if name.startswith(("create_", "write_")) and name not in {"create_file"}:
+        prefix = "create_" if name.startswith("create_") else "write_"
+        filename = name[len(prefix):].replace("_", ".")
+        # Handle common extensions
+        if not any(filename.endswith(ext) for ext in [".py", ".txt", ".json", ".md", ".html", ".js", ".ts"]):
+            # Check if last part looks like extension (e.g., create_foo_py -> foo.py)
+            parts = name[len(prefix):].rsplit("_", 1)
+            if len(parts) == 2 and len(parts[1]) <= 4:
+                filename = f"{parts[0]}.{parts[1]}"
+        args = dict(args)
+        if "path" not in args:
+            args["path"] = filename
+        return "write_file", args
+
+    # Pattern: read_<filename>
+    if name.startswith("read_") and name != "read_file":
+        filename = name[5:].replace("_", ".")
+        parts = name[5:].rsplit("_", 1)
+        if len(parts) == 2 and len(parts[1]) <= 4:
+            filename = f"{parts[0]}.{parts[1]}"
+        args = dict(args)
+        if "path" not in args:
+            args["path"] = filename
+        return "read_file", args
+
+    # Pattern: delete_<filename>
+    if name.startswith("delete_") and name != "delete_file":
+        filename = name[7:].replace("_", ".")
+        parts = name[7:].rsplit("_", 1)
+        if len(parts) == 2 and len(parts[1]) <= 4:
+            filename = f"{parts[0]}.{parts[1]}"
+        args = dict(args)
+        if "path" not in args:
+            args["path"] = filename
+        return "delete_file", args
+
+    # Aliases for aider_edit: edit, change, patch, modify
+    if name in {"edit", "change", "patch", "modify", "update"}:
+        return "aider_edit", args
+
+    return name, args
+
+
 def _log_response(
     label: str,
     model: str,
@@ -291,6 +370,10 @@ def _extract_tool_calls_from_text(text: str) -> list[dict]:
         if isinstance(data, dict):
             name = data.get("name")
             args = data.get("arguments") or data.get("args") or {}
+            # Normalize tool name and infer params (e.g., create_foo_py -> write_file, path=foo.py)
+            name, args = _normalize_tool_name(name, args)
+            # Normalize parameter names (handle common LLM mistakes)
+            args = _normalize_tool_params(name, args)
             # Validate content for write_file/apply_patch
             if name == "write_file":
                 content = args.get("content") or ""
@@ -307,6 +390,10 @@ def _extract_tool_calls_from_text(text: str) -> list[dict]:
                 if isinstance(item, dict) and item.get("name"):
                     item_args = item.get("arguments") or item.get("args") or {}
                     item_name = item.get("name")
+                    # Normalize tool name and infer params
+                    item_name, item_args = _normalize_tool_name(item_name, item_args)
+                    # Normalize parameter names
+                    item_args = _normalize_tool_params(item_name, item_args)
                     if item_name == "write_file":
                         content = item_args.get("content") or ""
                         if _is_placeholder_content(content):
@@ -576,12 +663,13 @@ def _aider_edit(workspace_root: str, prompt: str, files: list[str] | None = None
 
     cmd: list[str] = [
         "aider",
-        "--model",
-        aider_model,
-        "--auto-commits",
-        "--yes",
-        "--message",
-        prompt,
+        "--model", aider_model,
+        "--no-auto-commits",         # Don't auto-commit changes
+        "--no-git",                  # Workspace may not be a git repo
+        "--no-show-model-warnings",  # Suppress "Unknown context window" warnings
+        "--map-tokens", "0",         # Disable repo map to avoid token calculations
+        "--yes",                     # Auto-confirm prompts
+        "--message", prompt,
     ]
     cmd.extend(safe_files)
 
@@ -882,9 +970,15 @@ def _build_tools(workspace_root: str):
         parts = shlex.split(command)
         if not parts:
             return {"success": False, "error": "command required"}
-        allowed = {"ls", "dir", "pwd", "cat", "type"}
+        allowed = {
+            "ls", "dir", "pwd", "cat", "type", "head", "tail", "wc",
+            "cp", "mv", "mkdir", "touch", "find", "grep", "rg",
+            "git", "curl", "wget", "python", "python3", "pip", "pip3",
+            "java", "javac", "mvn", "gradle", "node", "npm", "npx",
+            "echo", "printf", "date", "whoami", "which", "env",
+        }
         if parts[0] not in allowed:
-            return {"success": False, "error": f"command not allowed: {parts[0]}"}
+            return {"success": False, "error": f"command not allowed: {parts[0]}. Allowed: {', '.join(sorted(allowed))}"}
 
         if os.name == "nt":
             cmd = ["cmd.exe", "/c", command]
@@ -921,7 +1015,7 @@ def _build_tools(workspace_root: str):
 
     @tool
     def aider_edit(prompt: str, files: list[str] | None = None, timeout: int = 300) -> dict:
-        """Use aider to edit existing files. Provide a prompt and optional file list."""
+        """Edit existing files using aider. Args: prompt (required) = what changes to make, files (optional) = list of file paths to edit like ['foo.py', 'bar.py']."""
         return _aider_edit(workspace_root, prompt=prompt, files=files or [], timeout=timeout)
 
     @tool

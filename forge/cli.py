@@ -9,6 +9,15 @@ from typing import Optional
 
 import typer
 
+from forge.workspaces import (
+    add_workspace,
+    find_workspace,
+    list_workspaces,
+    remove_workspace,
+    resolve_workspace,
+    set_default_workspace,
+)
+
 # Add parent dir to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,9 +27,18 @@ app = typer.Typer(
     add_completion=False,
 )
 
-# Memory subcommands
+
+# Workspace registry subcommands
+workspaces_app = typer.Typer(help="Workspace registry and router")
+app.add_typer(workspaces_app, name="workspaces")
+
+# Memory subcommands (knowledge base)
 memory_app = typer.Typer(help="Knowledge memory management")
 app.add_typer(memory_app, name="memory")
+
+# Agent memory subcommands (observations)
+from forge.agentmem.cli import app as mem_app
+app.add_typer(mem_app, name="mem")
 
 
 @memory_app.command("store")
@@ -127,6 +145,81 @@ def memory_stats(
     except ImportError as e:
         typer.echo(f"Error: Missing dependency - {e}", err=True)
         raise typer.Exit(1)
+
+
+@workspaces_app.command("list")
+def workspaces_list():
+    """List registered workspaces."""
+    items = list_workspaces()
+    if not items:
+        typer.echo("No workspaces registered.")
+        raise typer.Exit(0)
+    for ws in items:
+        tags = ",".join(ws.tags) if ws.tags else "-"
+        sigs = ",".join(ws.repo_signatures) if ws.repo_signatures else "-"
+        proj = ws.project_id if ws.project_id is not None else "-"
+        last_used = ws.last_used or "-"
+        typer.echo(f"{ws.id} | {ws.name} | {ws.root}")
+        typer.echo(f"  tags={tags}  signatures={sigs}  project_id={proj}  last_used={last_used}")
+
+
+@workspaces_app.command("add")
+def workspaces_add(
+    name: str = typer.Option(..., "--name", help="Workspace name"),
+    root: str = typer.Option(..., "--root", help="Workspace root path"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags"),
+    signatures: Optional[str] = typer.Option(None, "--signatures", help="Comma-separated repo signatures"),
+    project_id: Optional[int] = typer.Option(None, "--project-id", help="Associated project ID"),
+    default: bool = typer.Option(False, "--default", help="Set as default workspace"),
+):
+    """Add or update a workspace."""
+    tag_list = [t.strip() for t in tags.split(",")] if tags else []
+    sig_list = [s.strip() for s in signatures.split(",")] if signatures else []
+    ws = add_workspace(
+        name=name,
+        root=root,
+        tags=tag_list,
+        repo_signatures=sig_list,
+        project_id=project_id,
+        set_default=default,
+    )
+    typer.echo(f"Saved workspace: {ws.id} ({ws.name}) -> {ws.root}")
+
+
+@workspaces_app.command("remove")
+def workspaces_remove(key: str = typer.Argument(..., help="Workspace id or name")):
+    """Remove a workspace."""
+    if remove_workspace(key):
+        typer.echo(f"Removed workspace: {key}")
+    else:
+        typer.echo(f"Workspace not found: {key}")
+        raise typer.Exit(1)
+
+
+@workspaces_app.command("set-default")
+def workspaces_set_default(key: str = typer.Argument(..., help="Workspace id or name")):
+    """Set the default workspace."""
+    if set_default_workspace(key):
+        typer.echo(f"Default workspace set: {key}")
+    else:
+        typer.echo(f"Workspace not found: {key}")
+        raise typer.Exit(1)
+
+
+@workspaces_app.command("resolve")
+def workspaces_resolve(
+    hint: Optional[str] = typer.Option(None, "--hint", help="Hint for router (tag/name/signature)"),
+    explicit: Optional[str] = typer.Option(None, "--explicit", help="Explicit workspace id/name/path"),
+):
+    """Resolve a workspace from current context."""
+    result = resolve_workspace(
+        cwd=os.getcwd(),
+        hint=hint,
+        explicit=explicit,
+    )
+    typer.echo(f"{result.get('root')}")
+    typer.echo(f"id={result.get('id')} name={result.get('name')} project_id={result.get('project_id')}")
+    typer.echo(f"score={result.get('score')} source={result.get('source')} reasons={','.join(result.get('reasons') or [])}")
 
 
 class ForgeREPL:
@@ -445,7 +538,7 @@ def main(
         help="Read prompt from file",
     ),
     workspace: str = typer.Option(
-        "poc",
+        "auto",
         "--workspace", "-w",
         help="Workspace name or path",
         envvar="FORGE_WORKSPACE",
@@ -496,6 +589,23 @@ def main(
             raise typer.Exit(1)
     elif prompt:
         actual_prompt = prompt
+
+    # Resolve workspace (by registry or router)
+    if workspace and workspace.lower() == "auto":
+        hint = os.environ.get("FORGE_WORKSPACE_HINT")
+        resolved = resolve_workspace(cwd=os.getcwd(), hint=hint, explicit=None)
+        workspace = resolved.get("root") or workspace
+        if resolved.get("id"):
+            os.environ["FORGE_WORKSPACE_ID"] = str(resolved["id"])
+        if resolved.get("project_id") is not None:
+            os.environ["FORGE_PROJECT_ID"] = str(resolved["project_id"])
+    else:
+        ws_entry = find_workspace(workspace)
+        if ws_entry:
+            workspace = ws_entry.root
+            os.environ["FORGE_WORKSPACE_ID"] = str(ws_entry.id)
+            if ws_entry.project_id is not None:
+                os.environ["FORGE_PROJECT_ID"] = str(ws_entry.project_id)
 
     # If prompt provided, run one-off mode
     if actual_prompt:

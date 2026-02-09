@@ -13,10 +13,10 @@ fi
 # Add repo to PYTHONPATH
 export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
 
-# Pass current directory as workspace if not specified
+# Default to auto workspace resolution if not specified
 # Check if -w or --workspace is in args
 if [[ ! "$*" =~ (-w[[:space:]]|--workspace[[:space:]]|--workspace=) ]]; then
-    exec python -m forge --workspace "$(pwd)" "$@"
+    exec python -m forge "$@"
 else
     exec python -m forge "$@"
 fi
