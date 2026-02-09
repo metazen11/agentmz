@@ -18,35 +18,43 @@ Use `--no-browser` flag to disable: `./start.sh --no-browser`
 ## Architecture
 
 ```
-
-├── install.sh           # One-command installer (venv, deps, Docker, migrations)
-├── start.sh             # Start services after installation
-├── chat.html            # Single-file web UI (vanilla JS, no build step)
+agentmz/
+├── .env                 # Configuration (single source of truth)
+├── start.sh             # Start services / one-command startup
 ├── main.py              # FastAPI main API (port 8002)
 ├── models.py            # SQLAlchemy models (Project, Task)
 ├── database.py          # PostgreSQL connection
-├── .env                 # Configuration (single source of truth)
+├── llm.md               # Model catalog (canonical model reference)
+│
+├── routers/             # FastAPI routers (projects, tasks, workspace, ollama, etc.)
+├── services/            # Business logic layer
+├── core/                # Shared utilities
+│
+├── forge/               # Forge agent TUI + CLI + memory
+│   ├── app.py           # Textual TUI
+│   ├── cli.py           # Typer CLI with yolo mode
+│   ├── agent/           # Agent wrapper + session management
+│   ├── agentmem/        # Agent memory (classify, embed, retrieve)
+│   ├── hooks/           # Pre/post tool hooks
+│   ├── memory/          # Project knowledge store (pgvector)
+│   └── tools/           # Tool registry
 │
 ├── scripts/
-│   └── aider_api.py     # Aider HTTP wrapper API (port 8001)
+│   ├── aider_api.py     # Coding Agent HTTP API (port 8001)
+│   ├── agent_cli.py     # LangGraph CLI agent
+│   └── forge            # Forge wrapper for subagent use
 │
 ├── docker/
-│   ├── docker-compose.yml       # Container orchestration
-│   ├── Dockerfile.aider-api     # Aider API container
-│   ├── Dockerfile.main-api      # Main API container
-│   └── Dockerfile.ollama        # Custom Ollama with init script
-│
-├── workspaces/          # Project workspaces (mounted to containers)
-│   ├── poc/             # Proof of concept workspace
-│   └── beatbridge_app/  # Example project workspace
+│   ├── docker-compose.yml  # Container orchestration
+│   ├── Dockerfile.*        # Container definitions
+│   └── scripts/            # SSH keys, restart scripts
 │
 ├── alembic/             # Database migrations
-│   ├── env.py
-│   └── versions/
+├── tests/               # pytest + Playwright test suites
+├── static/              # Web UI assets
 │
-└── tests/
-    ├── test_aider_api.py    # API endpoint tests
-    └── test_poc_game.py     # Integration tests
+└── workspaces/          # Project workspaces (mounted to containers)
+    └── poc/             # Default workspace
 ```
 
 ## Installation
@@ -216,27 +224,14 @@ Accessible through the HTTPS proxy at `https://wfhub.localhost/aider` when the s
 | GET | `/logs/{container}` | Get recent container logs |
 | WS | `/ws/logs/{container}` | Stream container logs |
 
-## Recommended Models
+## Models
 
-Based on extensive testing, these models provide the best balance of speed, quality, and capability:
+**Default**: `gemma3:4b` — fast, native tool calling, vision capable.
 
-| Model | Size | Use Case | Speed | Tool Support |
-|-------|------|----------|-------|--------------|
-| **gemma3:4b** | 3.3GB | Default - coding + vision | Fast (~5s) | ✅ Native |
-| qwen3-vl:8b | ~5GB | Vision fallback | Medium | ✅ Native |
-
-### Model Selection Findings
-
-- **gemma3:4b** is 18x faster than qwen2.5vl:7b with equivalent vision quality
-- Supports native tool calling (no fallback parsing needed)
-- Handles HTML, Python, and general coding tasks reliably
-- Vision capability enables UI screenshot analysis
-
-### Pull Recommended Models
+See **[llm.md](llm.md)** for the full model catalog, size tradeoffs, and known issues.
 
 ```bash
 ollama pull gemma3:4b        # Primary (required)
-ollama pull qwen3-vl:8b      # Vision fallback (optional)
 ```
 
 ## Configuration

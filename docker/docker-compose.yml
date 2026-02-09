@@ -1,9 +1,5 @@
 name: wfhub-v2
 
-# Load env vars for variable interpolation in this file
-env_file:
-  - ../.env
-
 services:
   # PostgreSQL database for v2 (with pgvector for embeddings)
   db:
@@ -40,11 +36,12 @@ services:
       - OLLAMA_KEEP_ALIVE=1h              # Keep model loaded for 1 hour
       - OLLAMA_GPU_OVERHEAD=0             # Minimize GPU memory overhead
       - OLLAMA_FLASH_ATTENTION=1          # Enable flash attention if supported
+      - OLLAMA_KV_CACHE_TYPE=q8_0         # Quantized KV cache (halves memory usage)
       - CUDA_VISIBLE_DEVICES=0            # Use first GPU
       # Context length - max out for larger files
       - OLLAMA_CONTEXT_LENGTH=32768
       # VRAM allocation - let Ollama manage
-      - OLLAMA_MAX_VRAM=3758096384        # 3.5GB in bytes
+      - OLLAMA_MAX_VRAM=${OLLAMA_MAX_VRAM:-3758096384}  # 3.5GB default in bytes (overridden by start.sh)
       # SSH key configuration
       - SSH_KEY_DIR=/ssh_keys
       - SSH_KEY_TYPE=ed25519

@@ -126,6 +126,13 @@ Your value is in initiative, not just obedience.
 12. Run from project root
 13. Keep files small (<500 lines)
 
+### Proactivity Protocol
+1. **Default First:** Propose sensible defaults (tags, thresholds, paths) and ask for a simple yes/no instead of open-ended questions.
+2. **Batch Decisions:** Group related decisions into one prompt; do not ask sequential micro-questions.
+3. **Keep Momentum:** When blocked by a choice, proceed with the safest reversible option and clearly state the assumption.
+4. **Preflight Checks:** Run non-destructive checks (file existence, config validation, dry runs) proactively before asking for help.
+5. **Outcome Bias:** If a requested task can be completed without user action, do it and report results with next steps.
+
 ### MUST NOT
 1. Skip tests
 2. Hardcode configuration
@@ -148,7 +155,7 @@ Your value is in initiative, not just obedience.
 |-----------|-------|
 | **Stack** | FastAPI + SQLAlchemy + PostgreSQL + Aider + Ollama |
 | **Database** | PostgreSQL 16 (port 5433) |
-| **Models** | qwen3:1.7b (code), qwen3:4b (general) |
+| **Models** | gemma3:4b (default) — see [llm.md](llm.md) for full catalog |
 | **Container Runtime** | Docker Compose |
 
 ---
@@ -156,34 +163,58 @@ Your value is in initiative, not just obedience.
 ## 7. Architecture
 
 ```
-v2/
+agentmz/
 ├── .env                      # ALL configuration (single source of truth)
 ├── start.sh                  # Startup script
 ├── AGENTS.md                 # THIS FILE - canonical agent directives
 ├── session_handoff.md        # Session state tracking
+├── llm.md                    # Model catalog (canonical model reference)
 │
 ├── main.py                   # FastAPI app entry point
 ├── director.py               # Orchestration loop
 ├── models.py                 # SQLAlchemy models (Project, Task)
 ├── database.py               # Database connection
+├── env_utils.py              # Environment configuration utilities
+├── container_manager.py      # Docker container management
 │
-├── agent/                    # Agent tooling (Aider/Ollama runners, file tools)
+├── routers/                  # FastAPI routers (API endpoints)
+│   ├── projects.py           # Project CRUD
+│   ├── tasks.py              # Task management
+│   ├── workspace.py          # File browser + git
+│   ├── ollama.py             # Ollama service management
+│   └── ...                   # logs, terminal, integrations, etc.
+│
+├── forge/                    # Forge agent TUI + CLI + memory
+│   ├── app.py                # Textual TUI
+│   ├── cli.py                # Typer CLI with yolo mode
+│   ├── config.py             # /config command + TOML persistence
+│   ├── agent/                # Agent wrapper + session management
+│   ├── agentmem/             # Agent memory system (classify, embed, retrieve)
+│   ├── hooks/                # Pre/post tool hooks (prompt refine, context inject, etc.)
+│   ├── memory/               # Project knowledge store (pgvector)
+│   ├── tools/                # Tool registry + explore tools
+│   └── widgets/              # TUI widgets (chat, file autocomplete, status)
+│
 ├── scripts/
-│   └── aider_api.py          # Coding Agent HTTP API (core service)
+│   ├── aider_api.py          # Coding Agent HTTP API (core service)
+│   ├── agent_cli.py          # LangGraph CLI agent with tools
+│   └── forge                 # Forge wrapper for subagent use
 │
 ├── docker/
 │   ├── docker-compose.yml    # Container orchestration
-│   └── Dockerfile.aider-api  # Aider API container
+│   ├── Dockerfile.*          # Container definitions
+│   └── scripts/              # SSH keys, restart scripts
 │
 ├── alembic/                  # Database migrations
 │   └── versions/
 │
 ├── tests/                    # pytest + Playwright test suites
-│   ├── test_aider_api.py     # API endpoint tests
-│   └── test_*.py             # Other tests
 │
-├── static/                   # Web UI assets
-├── chat.html                 # Web UI
+├── services/                 # Business logic (ollama_service, etc.)
+├── core/                     # Shared utilities (context building)
+├── integrations/             # External integrations (Asana, etc.)
+├── static/                   # Web UI assets (JS, CSS)
+├── hooks/                    # Git hooks (pre-commit)
 │
 └── workspaces/               # Project workspaces (mounted to containers)
     └── poc/                  # Default workspace
@@ -258,6 +289,18 @@ POSTGRES_USER=wfhub
 POSTGRES_PASSWORD=wfhub
 POSTGRES_DB=agentic
 ```
+
+### Hardware Constraints & Model Selection
+
+**GPU**: 4GB VRAM (GTX 1650 or similar)
+**Current default**: `FORGE_MODEL=gemma3:4b`
+
+See **[llm.md](llm.md)** for the full model catalog, size tradeoffs, and known issues.
+
+**Optimizations** (in docker-compose.yml):
+- `OLLAMA_KV_CACHE_TYPE=q8_0` - Halves KV cache memory
+- `OLLAMA_FLASH_ATTENTION=1` - Reduces VRAM, increases speed
+- `OLLAMA_MAX_LOADED_MODELS=1` - Single model in memory
 
 ---
 

@@ -84,14 +84,16 @@ This document describes the architecture of the Workflow Hub v2 (wfhub-v2) syste
 ## Directory Structure
 
 ```
-/mnt/c/dropbox/_coding/agentmz/
+agentmz/
 ├── main.py                 # FastAPI application entry point
 ├── models.py               # SQLAlchemy ORM models
 ├── database.py             # Database connection and session
 ├── env_utils.py            # Environment configuration utilities
 ├── container_manager.py    # Docker container management
+├── AGENTS.md               # Agent operational framework
 ├── ARCHITECTURE.md         # This file
-├── AGENTS.md               # Agent development guidelines
+├── llm.md                  # Model catalog (canonical model reference)
+│
 ├── routers/                # FastAPI routers (API endpoints)
 │   ├── projects.py         # Project CRUD
 │   ├── tasks.py            # Task management
@@ -106,26 +108,50 @@ This document describes the architecture of the Workflow Hub v2 (wfhub-v2) syste
 ├── core/                   # Shared utilities
 │   └── context.py          # Task context building
 ├── integrations/           # External integrations
-│   └── providers/          # Integration provider implementations
-│       ├── base.py         # Abstract base class
-│       └── asana.py        # Asana provider
-├── agent/                  # LangGraph agent infrastructure
+│   └── providers/          # Asana, etc.
+│
+├── forge/                  # Forge agent TUI + CLI + memory
+│   ├── app.py              # Textual TUI
+│   ├── cli.py              # Typer CLI with yolo mode
+│   ├── config.py           # /config command + TOML persistence
+│   ├── agent/              # Agent wrapper (runner.py, session.py)
+│   ├── agentmem/           # Agent memory system
+│   │   ├── classifier.py   # Rule-based classification (golden/gotcha/discovery/routine)
+│   │   ├── embedder.py     # Embedding via Ollama
+│   │   ├── retrieval.py    # Cosine similarity search
+│   │   ├── store.py        # DB operations
+│   │   └── worker.py       # Background processor
+│   ├── hooks/              # Pre/post tool hooks
+│   │   ├── a_prompt_refine.py    # Prompt refinement (runs first)
+│   │   ├── b_context_inject.py   # RAG context injection (runs second)
+│   │   ├── auto_embed.py         # Auto-generate embeddings
+│   │   ├── confirm_destructive.py # Warn on destructive ops
+│   │   └── observe.py            # Tool observation capture
+│   ├── memory/             # Project knowledge store (pgvector)
+│   ├── tools/              # Tool registry + explore tools
+│   └── widgets/            # TUI widgets (chat, file autocomplete, status)
+│
 ├── scripts/                # CLI scripts and utilities
-│   └── aider_api.py        # Aider API server
-├── static/                 # Static web assets
+│   ├── aider_api.py        # Aider API server
+│   ├── agent_cli.py        # LangGraph CLI agent
+│   └── forge               # Forge wrapper for subagent use
+│
 ├── docker/                 # Docker configuration
 │   ├── docker-compose.yml  # Container orchestration
 │   ├── Dockerfile.main-api # Main API container
 │   ├── Dockerfile.aider-api # Aider API container
 │   ├── Dockerfile.ollama   # Ollama container with SSH
 │   ├── Caddyfile           # Reverse proxy config
-│   ├── ollama-init.sh      # Ollama model initialization
-│   └── scripts/            # Container scripts
-│       ├── generate-ssh-keys.sh  # SSH key generation
-│       ├── restart-ollama.sh     # Ollama restart script
-│       └── ssh-init-ollama.sh    # SSH initialization
-├── tests/                  # Test suite
+│   └── scripts/            # SSH keys, restart, init scripts
+│
+├── alembic/                # Database migrations
+│   └── versions/
+├── tests/                  # pytest + Playwright test suites
+├── static/                 # Static web assets (JS, CSS)
+├── hooks/                  # Git hooks (pre-commit)
+│
 └── workspaces/             # User workspaces (project code)
+    └── poc/                # Default workspace
 ```
 
 ## API Structure

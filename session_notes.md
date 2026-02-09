@@ -19,3 +19,6 @@
 - qwen3:1.7b pull timed out; still not available.
 - Set Agent CLI default base to http://localhost:11435 until HTTPS trust is fixed.
 - New request: add deterministic per-model tests for HTML generation and JS edit using runner; agent named Forge, keep system agnostic.
+- Added Docker permission-denied guidance to start.sh (suggest usermod + newgrp).
+- Removed unsupported top-level env_file from docker/docker-compose.yml (compose validation error).
+- Added startup automation config to .env and dynamic VRAM/disk guard + auto-pull logic in start.sh; docker-compose now uses OLLAMA_MAX_VRAM from env.

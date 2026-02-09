@@ -88,6 +88,15 @@ VISION_MODEL="${VISION_MODEL:-qwen2.5vl:7b}"
 AIDER_API_PORT="${AIDER_API_PORT:-8001}"
 V2_OLLAMA_PORT="11435"  # v2 Ollama exposed on different port
 
+# Startup automation defaults (can be overridden via .env)
+AUTO_PULL_ENABLE="${AUTO_PULL_ENABLE:-1}"
+AUTO_PULL_MODELS="${AUTO_PULL_MODELS:-gemma3:4b,qwen3:0.6b,qwen2.5-coder:3b}"
+AUTO_PULL_MIN_FREE_GB="${AUTO_PULL_MIN_FREE_GB:-15}"
+VRAM_DETECT="${VRAM_DETECT:-1}"
+VRAM_FALLBACK_GB="${VRAM_FALLBACK_GB:-4}"
+VRAM_Q4_THRESHOLD_GB="${VRAM_Q4_THRESHOLD_GB:-4}"
+OLLAMA_MAX_VRAM_DYNAMIC="${OLLAMA_MAX_VRAM_DYNAMIC:-1}"
+
 # === Check and Start Docker ===
 start_docker_desktop() {
     echo "Docker is not running. Attempting to start Docker Desktop..."
@@ -153,6 +162,17 @@ wait_for_docker() {
 }
 
 if ! docker info > /dev/null 2>&1; then
+    docker_err=$(docker info 2>&1 || true)
+    if echo "$docker_err" | grep -qi "permission denied while trying to connect to the docker api"; then
+        echo "ERROR: Docker is running but your user lacks permission to access the Docker socket."
+        echo ""
+        echo "Fix:"
+        echo "  1) sudo usermod -aG docker \$USER"
+        echo "  2) newgrp docker   # or log out/in to refresh group membership"
+        echo "  3) rerun ./start.sh"
+        exit 1
+    fi
+
     if start_docker_desktop; then
         if ! wait_for_docker; then
             echo "ERROR: Docker Desktop started but not responding."
@@ -166,6 +186,42 @@ if ! docker info > /dev/null 2>&1; then
     fi
 fi
 echo "Docker: running"
+
+# === VRAM Detection (for Ollama config) ===
+detect_vram_gb() {
+    if [ "$VRAM_DETECT" != "1" ]; then
+        echo "$VRAM_FALLBACK_GB"
+        return 0
+    fi
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        local vram_mb
+        vram_mb="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d ' ')"
+        if [[ "$vram_mb" =~ ^[0-9]+$ ]] && [ "$vram_mb" -gt 0 ]; then
+            echo $((vram_mb / 1024))
+            return 0
+        fi
+    fi
+    echo "$VRAM_FALLBACK_GB"
+}
+
+get_free_gb() {
+    if command -v df >/dev/null 2>&1; then
+        local path="/var/lib/docker"
+        if [ -d "$path" ]; then
+            df -BG --output=avail "$path" 2>/dev/null | tail -n 1 | tr -dc '0-9'
+            return 0
+        fi
+    fi
+    echo ""
+}
+
+if [ "$OLLAMA_MAX_VRAM_DYNAMIC" = "1" ]; then
+    VRAM_GB="$(detect_vram_gb)"
+    if [[ "$VRAM_GB" =~ ^[0-9]+$ ]] && [ "$VRAM_GB" -gt 0 ]; then
+        export OLLAMA_MAX_VRAM=$((VRAM_GB * 1024 * 1024 * 1024))
+        echo "Detected VRAM: ${VRAM_GB}GB (setting OLLAMA_MAX_VRAM=${OLLAMA_MAX_VRAM})"
+    fi
+fi
 
 # === Start v2 Services ===
 echo "--- Starting v2 Services ---"
@@ -204,6 +260,13 @@ ensure_model() {
         echo "OK"
     else
         echo "NOT FOUND"
+        local free_gb
+        free_gb="$(get_free_gb)"
+        if [[ "$free_gb" =~ ^[0-9]+$ ]] && [ "$free_gb" -lt "$AUTO_PULL_MIN_FREE_GB" ]; then
+            echo ""
+            echo "Skipping pull for $model: low disk space (${free_gb}GB free, requires >= ${AUTO_PULL_MIN_FREE_GB}GB)."
+            return 0
+        fi
         echo ""
         echo "Pulling model $model into v2 Ollama..."
         docker exec wfhub-v2-ollama ollama pull "$model"
@@ -212,9 +275,58 @@ ensure_model() {
     fi
 }
 
+dedupe_models() {
+    local input="$1"
+    local output=""
+    declare -A seen
+    IFS=',' read -r -a items <<< "$input"
+    for item in "${items[@]}"; do
+        item="$(echo "$item" | xargs)"
+        [ -z "$item" ] && continue
+        if [ -z "${seen[$item]:-}" ]; then
+            seen[$item]=1
+            if [ -z "$output" ]; then
+                output="$item"
+            else
+                output="${output},${item}"
+            fi
+        fi
+    done
+    echo "$output"
+}
+
+select_model_variant() {
+    local model="$1"
+    local vram_gb="$2"
+    if echo "$model" | grep -qi -- '-q[0-9]'; then
+        echo "$model"
+        return 0
+    fi
+    if [[ "$vram_gb" =~ ^[0-9]+$ ]] && [ "$vram_gb" -le "$VRAM_Q4_THRESHOLD_GB" ]; then
+        case "$model" in
+            qwen3:0.6b) echo "qwen3:0.6b-q4_K_M"; return 0 ;;
+        esac
+    fi
+    echo "$model"
+}
+
 ensure_model "$AGENT_MODEL" "agent"
 if [ "$VISION_MODEL" != "$AGENT_MODEL" ]; then
     ensure_model "$VISION_MODEL" "vision"
+fi
+
+if [ "$AUTO_PULL_ENABLE" = "1" ] && [ -n "$AUTO_PULL_MODELS" ]; then
+    VRAM_GB="${VRAM_GB:-$(detect_vram_gb)}"
+    AUTO_PULL_MODELS="$(dedupe_models "$AUTO_PULL_MODELS")"
+    echo ""
+    echo "Auto-pull models: $AUTO_PULL_MODELS"
+    IFS=',' read -r -a AUTO_MODELS <<< "$AUTO_PULL_MODELS"
+    for model in "${AUTO_MODELS[@]}"; do
+        model="$(echo "$model" | xargs)"
+        [ -z "$model" ] && continue
+        selected="$(select_model_variant "$model" "$VRAM_GB")"
+        ensure_model "$selected" "auto"
+    done
 fi
 
 # Show v2 Ollama models
