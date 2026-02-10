@@ -16,7 +16,7 @@ router = APIRouter()
 ENV_FILE_PATH = Path(os.getenv("PROJECT_ROOT", Path(__file__).parent.parent)).resolve() / ".env"
 CONTAINER_NAMES = {
     "ollama": "wfhub-v2-ollama",
-    "aider": "wfhub-v2-aider-api",
+    "aider": "wfhub-v2-forge-api",
     "main": "wfhub-v2-main-api",
     "db": "wfhub-v2-db",
 }

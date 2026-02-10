@@ -32,8 +32,8 @@ GIT_USER_NAME="${GIT_USER_NAME:-Aider Agent}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-aider@local}"
 
 # Check if container is running
-if ! docker ps --format '{{.Names}}' | grep -q '^wfhub-v2-aider-api$'; then
-    echo "Error: Container wfhub-v2-aider-api is not running"
+if ! docker ps --format '{{.Names}}' | grep -q '^wfhub-v2-forge-api$'; then
+    echo "Error: Container wfhub-v2-forge-api is not running"
     echo "Start it with: cd docker && docker-compose up -d"
     exit 1
 fi
@@ -54,12 +54,12 @@ echo "Git user: $GIT_USER_NAME <$GIT_USER_EMAIL>"
 # Set git config in container before running aider
 docker exec \
   -w "$WORKDIR" \
-  wfhub-v2-aider-api \
+  wfhub-v2-forge-api \
   git config user.name "$GIT_USER_NAME" 2>/dev/null || true
 
 docker exec \
   -w "$WORKDIR" \
-  wfhub-v2-aider-api \
+  wfhub-v2-forge-api \
   git config user.email "$GIT_USER_EMAIL" 2>/dev/null || true
 
 # Route through main-api proxy for HTTP logging
@@ -70,5 +70,5 @@ docker exec -it \
   -e GIT_COMMITTER_NAME="$GIT_USER_NAME" \
   -e GIT_COMMITTER_EMAIL="$GIT_USER_EMAIL" \
   -w "$WORKDIR" \
-  wfhub-v2-aider-api \
+  wfhub-v2-forge-api \
   aider --lint-cmd "python3 /scripts/code-review" --model "ollama_chat/$MODEL" --yes --auto-commits $FILES

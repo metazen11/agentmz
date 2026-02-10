@@ -349,7 +349,7 @@ source venv/bin/activate
 alembic upgrade head
 
 # View container logs
-docker logs -f wfhub-v2-aider-api
+docker logs -f wfhub-v2-forge-api
 docker logs -f wfhub-v2-main-api
 ```
 

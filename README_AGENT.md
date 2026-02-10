@@ -118,7 +118,7 @@ start.sh
    +-- Docker Compose
    |      +-- wfhub-v2-ollama (LLM server, port 11435)
    |      +-- wfhub-v2-main-api (API + Ollama proxy, port 8002)
-   |      +-- wfhub-v2-aider-api (Aider service, port 8001)
+   |      +-- wfhub-v2-forge-api (Aider service, port 8001)
    |      +-- wfhub-v2-caddy (HTTPS proxy)
    |
    +-- agent_alias_install.sh

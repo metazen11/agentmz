@@ -11,7 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 router = APIRouter()
 
 CONTAINER_NAMES = {
-    "aider": "wfhub-v2-aider-api",
+    "aider": "wfhub-v2-forge-api",
     "main": "wfhub-v2-main-api",
     "ollama": "wfhub-v2-ollama",
     "db": "wfhub-v2-db",

@@ -14,7 +14,7 @@ from routers.nodes import get_node_or_404
 router = APIRouter()
 
 # AIDER_API_URL can be read from environment variable or config
-AIDER_API_BASE_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-aider-api:8001") # Using docker-compose service name for internal communication
+AIDER_API_BASE_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-forge-api:8001") # Using docker-compose service name for internal communication
 AIDER_RUN_PATH = "/api/aider/" + "exe" + "cute"
 
 class AgentChatRequest(BaseModel):

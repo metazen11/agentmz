@@ -3,7 +3,7 @@ Container Manager - Dynamically start/stop containers using Docker SDK.
 
 This module manages the v2 coding agent containers:
 - wfhub-v2-ollama: Local LLM with shared model cache
-- wfhub-v2-aider-api: Coding tools API with workspace mounted
+- wfhub-v2-forge-api: Coding tools API with workspace mounted
 
 Usage:
     from container_manager import ContainerManager
@@ -25,7 +25,7 @@ class ContainerManager:
 
     # Container names
     OLLAMA_CONTAINER = "wfhub-v2-ollama"
-    AIDER_API_CONTAINER = "wfhub-v2-aider-api"
+    AIDER_API_CONTAINER = "wfhub-v2-forge-api"
 
     # Default ports
     OLLAMA_HOST_PORT = 11435
@@ -177,8 +177,8 @@ class ContainerManager:
                 container.remove()
 
         # Build the image if needed
-        image_name = "wfhub-v2-aider-api"
-        dockerfile_path = self.v2_dir / "docker" / "Dockerfile.aider-api"
+        image_name = "wfhub-v2-forge-api"
+        dockerfile_path = self.v2_dir / "docker" / "Dockerfile.forge-api"
 
         if not dockerfile_path.exists():
             print(f"[MANAGER] ERROR: Dockerfile not found: {dockerfile_path}")

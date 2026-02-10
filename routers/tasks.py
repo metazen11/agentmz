@@ -385,7 +385,7 @@ async def trigger_task(task_id: int, db: Session = Depends(get_db)):
     import httpx
     from pathlib import Path
 
-    AIDER_API_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-aider-api:8001")
+    AIDER_API_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-forge-api:8001")
 
     task = get_task_or_404(task_id, db)
 
@@ -569,7 +569,7 @@ async def _execute_subtask_background(subtask_id: int, run_id: int):
     import httpx
     from database import SessionLocal
 
-    AIDER_API_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-aider-api:8001")
+    AIDER_API_URL = os.getenv("AIDER_API_URL", "http://wfhub-v2-forge-api:8001")
 
     db = SessionLocal()
     try:

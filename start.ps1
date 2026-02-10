@@ -275,7 +275,7 @@ for ($i = 1; $i -le 30; $i++) {
     } catch {
         if ($i -eq 30) {
             Write-Host "timeout" -ForegroundColor Red
-            Write-Host "Check logs: docker logs wfhub-v2-aider-api"
+            Write-Host "Check logs: docker logs wfhub-v2-forge-api"
             exit 1
         }
         Start-Sleep -Seconds 1

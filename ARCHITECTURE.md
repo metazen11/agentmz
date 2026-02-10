@@ -49,7 +49,7 @@ This document describes the architecture of the Workflow Hub v2 (wfhub-v2) syste
 ### aider-api (Port 8001)
 - **Role**: Coding agent with AI-powered tools
 - **Technology**: FastAPI + Aider + LangGraph
-- **Container**: `wfhub-v2-aider-api`
+- **Container**: `wfhub-v2-forge-api`
 - **Responsibilities**:
   - AI coding assistance via Aider
   - LangGraph agent orchestration
@@ -206,7 +206,7 @@ All containers are on the `wfhub-v2` Docker network and communicate via hostname
 | main-api | db | PostgreSQL | `wfhub-v2-db:5432` |
 | main-api | ollama | HTTP | `http://wfhub-v2-ollama:11434` |
 | main-api | ollama | SSH | `wfhub-v2-ollama:22` (restart only) |
-| main-api | aider-api | HTTP | `http://wfhub-v2-aider-api:8001` |
+| main-api | aider-api | HTTP | `http://wfhub-v2-forge-api:8001` |
 | aider-api | db | PostgreSQL | `wfhub-v2-db:5432` |
 | aider-api | main-api | HTTP | `http://wfhub-v2-main-api:8002/ollama` |
 
@@ -236,7 +236,7 @@ Key environment variables for container communication:
 ```bash
 # main-api
 DATABASE_URL=postgresql://wfhub:$POSTGRES_PASSWORD@wfhub-v2-db:5432/agentic
-AIDER_API_URL=http://wfhub-v2-aider-api:8001
+AIDER_API_URL=http://wfhub-v2-forge-api:8001
 OLLAMA_PROXY_TARGET=http://wfhub-v2-ollama:11434
 SSH_KEY_DIR=/ssh_keys
 OLLAMA_SSH_HOST=wfhub-v2-ollama

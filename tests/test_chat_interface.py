@@ -239,7 +239,7 @@ class TestChatInterfaceAPIs:
         res = requests.get(f"{MAIN_API}/logs/aider?lines=10", timeout=REQUEST_TIMEOUT)
         assert res.status_code == 200
         data = res.json()
-        assert data["container"] == "wfhub-v2-aider-api"
+        assert data["container"] == "wfhub-v2-forge-api"
         assert "logs" in data
 
     def test_logs_endpoint_ollama_http(self):

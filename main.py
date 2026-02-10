@@ -142,7 +142,7 @@ async def health_full():
     # Check aider-api
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            aider_res = await client.get("http://wfhub-v2-aider-api:8001/health")
+            aider_res = await client.get("http://wfhub-v2-forge-api:8001/health")
             if aider_res.status_code == 200:
                 aider_status = {"status": "ok"}
             else:
