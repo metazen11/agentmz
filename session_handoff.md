@@ -66,6 +66,9 @@
 - Fixed main-api health by updating `wfhub-v2-aider-api` host references to `wfhub-v2-forge-api` and restarting `wfhub-v2-main-api`.
 - Ran `alembic upgrade head` inside `wfhub-v2-main-api` to create missing tables (projects, etc.).
 - Re-attempted dependency upgrade with `pip install -r requirements.txt --upgrade --prefer-binary` but resolver backtracking persisted and was cancelled.
+- Added `smart_startup.js` + `smart_startup.sh` (auto-start with install fallback, Node auto-install attempts).
+- Updated README/README_AGENT to document smart startup; `.gitignore` now ignores `*.bak`.
+- Git push failed due to missing GitHub credentials.
 
 ---
 
