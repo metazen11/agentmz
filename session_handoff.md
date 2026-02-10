@@ -63,6 +63,9 @@
 - Attempted `pip install -r requirements.txt` but aborted due to long dependency backtracking.
 - `pytest tests/ -v` completed with extensive failures/errors (services/health/Playwright/integration); see latest run output.
 - `ruff check .` could not run because `ruff` not installed in `venv`.
+- Fixed main-api health by updating `wfhub-v2-aider-api` host references to `wfhub-v2-forge-api` and restarting `wfhub-v2-main-api`.
+- Ran `alembic upgrade head` inside `wfhub-v2-main-api` to create missing tables (projects, etc.).
+- Re-attempted dependency upgrade with `pip install -r requirements.txt --upgrade --prefer-binary` but resolver backtracking persisted and was cancelled.
 
 ---
 
