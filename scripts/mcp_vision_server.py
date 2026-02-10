@@ -84,7 +84,11 @@ def _looks_like_ollama_url(url: str) -> bool:
 
 VISION_MODEL = os.getenv("VISION_MODEL")
 if not VISION_MODEL:
-    VISION_MODEL = "qwen2.5vl:7b" if _looks_like_ollama_url(VISION_API_URL) else "ai/qwen3-vl"
+VISION_MODEL = (
+    "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M"
+    if _looks_like_ollama_url(VISION_API_URL)
+    else "ai/qwen3-vl"
+)
 VISION_TIMEOUT = int(os.getenv("VISION_TIMEOUT", "20"))
 VISION_MAX_TOKENS = int(os.getenv("VISION_MAX_TOKENS", "120"))
 

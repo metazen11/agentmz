@@ -544,7 +544,7 @@ def main(
         envvar="FORGE_WORKSPACE",
     ),
     model: str = typer.Option(
-        "gemma3:4b",
+        "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
         "--model", "-m",
         help="Ollama model to use",
         envvar="FORGE_MODEL",

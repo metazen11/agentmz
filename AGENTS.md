@@ -155,7 +155,7 @@ Your value is in initiative, not just obedience.
 |-----------|-------|
 | **Stack** | FastAPI + SQLAlchemy + PostgreSQL + Aider + Ollama |
 | **Database** | PostgreSQL 16 (port 5433) |
-| **Models** | gemma3:4b (default) — see [llm.md](llm.md) for full catalog |
+| **Models** | hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M (default) — see [llm.md](llm.md) for full catalog |
 | **Container Runtime** | Docker Compose |
 
 ---
@@ -277,8 +277,8 @@ All configuration lives in `.env`. NEVER hardcode values.
 ```bash
 # .env - Single Source of Truth
 OLLAMA_API_BASE=http://localhost:11434
-AIDER_MODEL=ollama_chat/qwen3:1.7b
-AGENT_MODEL=qwen3:1.7b
+AIDER_MODEL=ollama_chat/hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
+AGENT_MODEL=hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 MAX_ITERATIONS=20
 DEFAULT_WORKSPACE=poc
 AIDER_API_PORT=8001
@@ -293,7 +293,7 @@ POSTGRES_DB=agentic
 ### Hardware Constraints & Model Selection
 
 **GPU**: 4GB VRAM (GTX 1650 or similar)
-**Current default**: `FORGE_MODEL=gemma3:4b`
+**Current default**: `FORGE_MODEL=hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M`
 
 See **[llm.md](llm.md)** for the full model catalog, size tradeoffs, and known issues.
 
@@ -491,7 +491,7 @@ def safe_path(base_dir: str, user_path: str) -> str:
 | Port already in use | Previous instance running | `lsof -i :PORT` then kill process |
 | Alembic "Target database is not up to date" | Pending migrations | `alembic upgrade head` |
 | Alembic "Can't locate revision" | Missing migration file | `alembic stamp head` to reset |
-| Ollama model not found | Model not pulled | `ollama pull qwen3:1.7b` |
+| Ollama model not found | Model not pulled | `ollama pull hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M` |
 | Tests fail with import error | Wrong Python environment | `source venv/bin/activate` |
 | Permission denied on start.sh | Not executable | `chmod +x start.sh` |
 | Docker volume issues | Stale data | `docker compose down` (NOT `-v`!) then `up -d` |

@@ -234,18 +234,18 @@ APP_URL=https://wfhub.localhost
 MAIN_API_URL=https://wfhub.localhost
 
 # Vision (image descriptions via Ollama)
-VISION_MODEL=gemma3:4b
+VISION_MODEL=hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 VISION_TIMEOUT=20
 VISION_MODEL_REGEX=(^|[\\/:_-])(vl|vision|llava|mllama|moondream|minicpm-v|gemma3|qwen.*vl|clip)
 VISION_MAX_TOKENS=120
 VISION_IMAGE_MAX_SIZE=640
 
 # Aider Configuration (for code edits)
-AIDER_MODEL=ollama_chat/gemma3:4b
+AIDER_MODEL=ollama_chat/hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 AIDER_API_URL=https://wfhub.localhost/aider
 
 # Agent Configuration (for orchestration)
-AGENT_MODEL=gemma3:4b
+AGENT_MODEL=hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 AGENT_TIMEOUT=120
 MAX_ITERATIONS=20
 
@@ -339,9 +339,9 @@ for i in $(seq 1 60); do
     sleep 1
 done
 
-# Wait for Aider API
+# Wait for Forge API
 AIDER_API_PORT="${AIDER_API_PORT:-8001}"
-echo -n "  Aider API... "
+echo -n "  Forge API... "
 for i in $(seq 1 30); do
     if curl -sf "http://localhost:${AIDER_API_PORT}/health" > /dev/null 2>&1; then
         echo -e "${GREEN}ready${NC}"
@@ -349,7 +349,7 @@ for i in $(seq 1 30); do
     fi
     if [ $i -eq 30 ]; then
         echo -e "${RED}timeout${NC}"
-        echo "Check logs: docker logs wfhub-v2-aider-api"
+        echo "Check logs: docker logs wfhub-v2-forge-api"
         exit 1
     fi
     sleep 1
@@ -382,8 +382,8 @@ echo -e "  Migrations: ${GREEN}complete${NC}"
 # === Step 11: Pull Ollama Models ===
 if [ "$SKIP_MODELS" = false ]; then
     echo -e "${YELLOW}[11/11] Checking Ollama models...${NC}"
-    AGENT_MODEL="${AGENT_MODEL:-gemma3:4b}"
-    VISION_MODEL="${VISION_MODEL:-gemma3:4b}"  # gemma3 supports vision
+    AGENT_MODEL="${AGENT_MODEL:-hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M}"
+    VISION_MODEL="${VISION_MODEL:-hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M}"  # Qwen3-VL supports vision
 
     AVAILABLE_MODELS=$(curl -sf "http://localhost:${V2_OLLAMA_PORT}/api/tags" 2>/dev/null || echo '{"models":[]}')
 

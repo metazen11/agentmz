@@ -66,8 +66,8 @@ if (Test-Path $EnvFile) {
 
 # Get config from env or defaults
 $DefaultWorkspace = if ($env:DEFAULT_WORKSPACE) { $env:DEFAULT_WORKSPACE } else { "poc" }
-$AgentModel = if ($env:AGENT_MODEL) { $env:AGENT_MODEL } else { "qwen3:1.7b" }
-$VisionModel = if ($env:VISION_MODEL) { $env:VISION_MODEL } else { "qwen2.5vl:7b" }
+$AgentModel = if ($env:AGENT_MODEL) { $env:AGENT_MODEL } else { "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M" }
+$VisionModel = if ($env:VISION_MODEL) { $env:VISION_MODEL } else { "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M" }
 $AiderApiPort = if ($env:AIDER_API_PORT) { $env:AIDER_API_PORT } else { "8001" }
 $V2OllamaPort = "11435"
 

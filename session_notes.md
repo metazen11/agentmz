@@ -22,3 +22,5 @@
 - Added Docker permission-denied guidance to start.sh (suggest usermod + newgrp).
 - Removed unsupported top-level env_file from docker/docker-compose.yml (compose validation error).
 - Added startup automation config to .env and dynamic VRAM/disk guard + auto-pull logic in start.sh; docker-compose now uses OLLAMA_MAX_VRAM from env.
+- 2026-02-10: User wants to resume setup: Linux venv + bring containers up (likely via start.sh).
+- 2026-02-10: User wants to switch project default model to Qwen3-VL 4B GGUF Q4 (exact tag TBD).

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Forge CLI wrapper - sets up env and passes all args
-REPO_ROOT="/mnt/c/dropbox/_coding/agentmz"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Load environment variables
 if [[ -f "$REPO_ROOT/.env" ]]; then

@@ -82,7 +82,7 @@ The installer will:
 7. Configure local HTTPS (trust Caddy CA)
 8. Wait for all services to be healthy
 9. Run database migrations
-10. Pull Ollama models (gemma3:4b)
+10. Pull Ollama models (hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M)
 11. Open browser to the UI
 
 ### Installation Options
@@ -168,7 +168,7 @@ curl -X POST https://wfhub.localhost/aider/api/agent/run \
 # Switch model
 curl -X POST https://wfhub.localhost/aider/api/model/switch \
   -H "Content-Type: application/json" \
-  -d '{"model": "gemma3:4b"}'
+  -d '{"model": "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M"}'
 ```
 
 ### Health
@@ -226,12 +226,12 @@ Accessible through the HTTPS proxy at `https://wfhub.localhost/aider` when the s
 
 ## Models
 
-**Default**: `gemma3:4b` — fast, native tool calling, vision capable.
+**Default**: `hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M` — GGUF Q4, vision capable.
 
 See **[llm.md](llm.md)** for the full model catalog, size tradeoffs, and known issues.
 
 ```bash
-ollama pull gemma3:4b        # Primary (required)
+ollama pull hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M  # Primary (required)
 ```
 
 ## Configuration
@@ -255,8 +255,8 @@ MAIN_API_URL=https://wfhub.localhost
 AIDER_API_URL=https://wfhub.localhost/aider
 
 # Models
-AIDER_MODEL=ollama_chat/gemma3:4b
-AGENT_MODEL=gemma3:4b
+AIDER_MODEL=ollama_chat/hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
+AGENT_MODEL=hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 
 # Ports
 FASTAPI_PORT=8002
@@ -363,7 +363,7 @@ curl http://localhost:8002/health/full | python3 -m json.tool
 curl https://wfhub.localhost/ollama/api/tags
 
 # Pull missing model
-docker exec wfhub-v2-ollama ollama pull gemma3:4b
+docker exec wfhub-v2-ollama ollama pull hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 
 # Reset database (careful - deletes data!)
 docker compose --env-file .env -f docker/docker-compose.yml down

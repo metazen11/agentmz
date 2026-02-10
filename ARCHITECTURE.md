@@ -358,7 +358,7 @@ Keys are automatically generated on first startup:
 ```bash
 # Check ollama status (container + API health)
 curl http://localhost:8002/ollama/status
-# Response: {"container_status":"running","service_status":"running","models_loaded":["qwen3:1.7b",...]}
+# Response: {"container_status":"running","service_status":"running","models_loaded":["hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",...]}
 
 # Restart with automatic fallback (tries SSH first, then container)
 curl -X POST http://localhost:8002/ollama/restart

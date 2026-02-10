@@ -79,7 +79,7 @@ services:
       - DATABASE_URL=postgresql://wfhub:${POSTGRES_PASSWORD}@wfhub-v2-db:5432/agentic
       - POSTGRES_HOST=wfhub-v2-db
       - POSTGRES_PORT=5432
-      - AIDER_API_URL=http://wfhub-v2-aider-api:8001
+      - AIDER_API_URL=http://wfhub-v2-forge-api:8001
       - OLLAMA_PROXY_TARGET=http://wfhub-v2-ollama:11434
       - PROJECT_ROOT=/app  # For [%root%] path variable (container path)
       - HOST_PROJECT_ROOT=${PROJECT_ROOT}  # Host path for VS Code URLs
@@ -101,13 +101,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Coding Agent API - aider + tools
-  aider-api:
+  # Forge API - coding agent + tools (formerly aider-api)
+  forge-api:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.aider-api
-    container_name: wfhub-v2-aider-api
-    hostname: wfhub-v2-aider-api
+      dockerfile: docker/Dockerfile.forge-api
+    container_name: wfhub-v2-forge-api
+    hostname: wfhub-v2-forge-api
     env_file:
       - ../.env
     environment:
@@ -116,7 +116,7 @@ services:
       - PORT=${AIDER_API_PORT}
       - WORKSPACES_DIR=/workspaces
       - DATABASE_URL=postgresql://wfhub:${POSTGRES_PASSWORD}@wfhub-v2-db:5432/agentic
-      - PROJECT_ROOT=/app  # For [%root%] path variable
+      - PROJECT_ROOT=/app
       - PYTHONUNBUFFERED=1
     extra_hosts:
       - "wfhub.localhost:172.17.0.1"
@@ -124,12 +124,34 @@ services:
       - "${AIDER_API_PORT}:${AIDER_API_PORT}"
     volumes:
       - ../workspaces:/workspaces
-      - ..:/app  # Mount project root - code changes reflect immediately
+      - ..:/app
     working_dir: /workspaces
-    entrypoint: ["python", "/app/scripts/aider_api.py"]  # Run from mount, not copied /app
+    entrypoint: ["python", "/app/scripts/aider_api.py"]
     depends_on:
       ollama:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Embedding service - CPU-only Ollama for nomic-embed-text
+  # Keeps embedding requests off the GPU so LLM inference isn't interrupted
+  embeddings:
+    image: ollama/ollama:latest
+    container_name: wfhub-v2-embeddings
+    hostname: wfhub-v2-embeddings
+    environment:
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=24h
+      - CUDA_VISIBLE_DEVICES=        # Force CPU-only
+    ports:
+      - "11436:11434"
+    volumes:
+      - wfhub_embeddings_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   # HTTPS reverse proxy (local certs via Caddy internal CA)
@@ -146,7 +168,7 @@ services:
       - wfhub_v2_caddy_config:/config
     depends_on:
       - main-api
-      - aider-api
+      - forge-api
     restart: unless-stopped
 
 volumes:
@@ -156,5 +178,7 @@ volumes:
     external: true
   wfhub_v2_caddy_data:
   wfhub_v2_caddy_config:
+  # Embedding model data (nomic-embed-text, CPU-only)
+  wfhub_embeddings_data:
   # Shared SSH keys for container management
   wfhub_ssh_keys:

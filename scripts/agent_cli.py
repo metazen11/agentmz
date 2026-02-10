@@ -407,7 +407,11 @@ def _extract_tool_calls_from_text(text: str) -> list[dict]:
 
 
 def _resolve_defaults(env: Dict[str, str]) -> dict:
-    model = env.get("AGENT_CLI_MODEL") or env.get("AGENT_MODEL") or "gemma3:4b"
+    model = (
+        env.get("AGENT_CLI_MODEL")
+        or env.get("AGENT_MODEL")
+        or "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M"
+    )
     base_url = (
         env.get("AGENT_CLI_OLLAMA_BASE")
         or env.get("OLLAMA_API_BASE_LOCAL")
@@ -652,7 +656,10 @@ def _aider_edit(workspace_root: str, prompt: str, files: list[str] | None = None
     if not safe_files:
         safe_files = _list_workspace_code_files(workspace_root)
 
-    aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:4b")
+    aider_model = os.environ.get(
+        "AIDER_MODEL",
+        "ollama_chat/hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
+    )
     # Prefer Forge-specific overrides, then Ollama defaults
     ollama_base = (
         os.environ.get("FORGE_OLLAMA_BASE")

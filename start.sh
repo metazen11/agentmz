@@ -83,14 +83,14 @@ else
 fi
 echo ""
 
-AGENT_MODEL="${AGENT_MODEL:-qwen3:1.7b}"
-VISION_MODEL="${VISION_MODEL:-qwen2.5vl:7b}"
+AGENT_MODEL="${AGENT_MODEL:-hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M}"
+VISION_MODEL="${VISION_MODEL:-hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M}"
 AIDER_API_PORT="${AIDER_API_PORT:-8001}"
 V2_OLLAMA_PORT="11435"  # v2 Ollama exposed on different port
 
 # Startup automation defaults (can be overridden via .env)
 AUTO_PULL_ENABLE="${AUTO_PULL_ENABLE:-1}"
-AUTO_PULL_MODELS="${AUTO_PULL_MODELS:-gemma3:4b,qwen3:0.6b,qwen2.5-coder:3b}"
+AUTO_PULL_MODELS="${AUTO_PULL_MODELS:-hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M,gemma3:4b,qwen3:0.6b,qwen2.5-coder:3b}"
 AUTO_PULL_MIN_FREE_GB="${AUTO_PULL_MIN_FREE_GB:-15}"
 VRAM_DETECT="${VRAM_DETECT:-1}"
 VRAM_FALLBACK_GB="${VRAM_FALLBACK_GB:-4}"
@@ -358,10 +358,10 @@ if [ $migration_exit -ne 0 ]; then
     docker exec wfhub-v2-main-api alembic current 2>&1 | head -5
 fi
 
-# === Wait for Aider API ===
+# === Wait for Forge API ===
 echo ""
-echo "--- Aider API ---"
-echo -n "Waiting for Aider API... "
+echo "--- Forge API ---"
+echo -n "Waiting for Forge API... "
 for i in {1..30}; do
     if curl -sf "http://localhost:${AIDER_API_PORT}/health" > /dev/null 2>&1; then
         echo "ready"
@@ -369,7 +369,7 @@ for i in {1..30}; do
     fi
     if [ $i -eq 30 ]; then
         echo "timeout"
-        echo "Check logs: docker logs wfhub-v2-aider-api"
+        echo "Check logs: docker logs wfhub-v2-forge-api"
         exit 1
     fi
     sleep 1

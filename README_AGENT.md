@@ -22,7 +22,7 @@ That's it. The stack handles Docker, Ollama models, aider, and shell configurati
 | Component | Description | Auto-Install |
 |-----------|-------------|--------------|
 | Docker services | Ollama, Aider API, Main API, Caddy | via docker-compose |
-| Ollama models | qwen3:0.6b, qwen3:1.7b, etc. | pulled on first run |
+| Ollama models | hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M (default), qwen3:0.6b, qwen2.5-coder:3b | pulled on first run |
 | Aider | AI coding assistant | pip install --user |
 | Agent command | Shell alias for easy access | added to .bashrc/.zshrc |
 | AGENTMZ_DIR | Environment variable | exported in shell rc |

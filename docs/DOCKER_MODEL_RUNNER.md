@@ -101,6 +101,7 @@ aider --model ollama/qwen2.5-coder:7b
 | `deepseek-coder:1.3b` | 776MB | Fast, lightweight tasks |
 | `qwen2.5-coder:3b` | 1.9GB | Good balance of speed/quality |
 | `qwen2.5-coder:7b` | 4.7GB | Best coding quality |
+| `hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M` | 3.0GB | Default (vision + coding) |
 | `qwen3:4b` | 2.5GB | General purpose |
 | `phi4` | 9GB | Large context, high quality |
 | `llava:7b` | 4.7GB | Vision/multimodal |

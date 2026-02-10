@@ -18,7 +18,7 @@ CONFIG_FILE = CONFIG_DIR / "config.toml"
 
 DEFAULT_CONFIG = {
     "defaults": {
-        "model": "gemma3:4b",
+        "model": "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
         "workspace": "poc",
         "ollama_url": "",  # Auto-detect: tries 11434 (local) then 11435 (docker)
         "max_iters": 6,
@@ -160,7 +160,7 @@ def handle_config_command(args: str) -> str:
             if set_value("defaults.model", value):
                 return f"Model set to: {value}"
             return "Error: Could not save config (install tomli-w)"
-        return f"Current model: {get('defaults.model', 'gemma3:4b')}"
+        return f"Current model: {get('defaults.model', 'hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M')}"
 
     elif cmd == "workspace":
         if value:

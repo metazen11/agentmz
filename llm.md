@@ -10,7 +10,8 @@
 
 | Model | Size | Use Case | Tool Calling | Fits 4GB? | Status |
 |-------|------|----------|--------------|-----------|--------|
-| **gemma3:4b** | 3.3GB | Default - coding + vision | Native | Yes | **Current default** |
+| **hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M** | ~3.0GB | Default - coding + vision (GGUF Q4) | Native | Yes | **Current default** |
+| gemma3:4b | 3.3GB | Fast, reliable fallback | Native | Yes | Available |
 | qwen3:1.7b | 1.4GB | Small coding tasks | Native | Yes | Available |
 | qwen3:0.6b | 0.5GB | Fastest, lightweight | Native | Yes | Available |
 | qwen2.5-coder:3b | 1.9GB | Coding optimized | Text fallback | Yes | Available |
@@ -28,7 +29,8 @@
 
 | Model | Size | Speed | Notes |
 |-------|------|-------|-------|
-| **gemma3:4b** | 3.3GB | Fast (~5s) | Primary vision model, 18x faster than qwen2.5vl:7b |
+| **hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M** | ~3.0GB | Fast | Primary vision model (GGUF Q4) |
+| gemma3:4b | 3.3GB | Fast (~5s) | Fallback vision model |
 | qwen3-vl:8b | ~5GB | Medium (~30s) | Fallback. Won't fit 4GB VRAM. |
 
 ## Agent Tooling Notes
@@ -51,7 +53,8 @@ Set in `docker/docker-compose.yml`:
 ## Pull Commands
 
 ```bash
-ollama pull gemma3:4b           # Primary (required)
+ollama pull hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M  # Primary (required)
+ollama pull gemma3:4b           # Fallback
 ollama pull qwen3:1.7b          # Small coding
 ollama pull nomic-embed-text    # Embeddings (for agentmem)
 ```

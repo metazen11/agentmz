@@ -38,7 +38,7 @@ class ForgeSubagent:
     def __init__(
         self,
         workspace: str = "poc",
-        model: str = "gemma3:4b",
+        model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
         ollama_url: str = "http://localhost:11435",
         max_iters: int = 6,
         timeout: int = 120,
@@ -164,7 +164,7 @@ class ForgeSubagent:
 def delegate(
     prompt: str,
     workspace: str = "poc",
-    model: str = "gemma3:4b",
+    model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
     ollama_url: str = "http://localhost:11435",
     timeout: int = 120,
 ) -> str:
@@ -193,7 +193,11 @@ def delegate(
     )
 
 
-def delegate_cli(prompt: str, workspace: str = "poc", model: str = "gemma3:4b") -> str:
+def delegate_cli(
+    prompt: str,
+    workspace: str = "poc",
+    model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
+) -> str:
     """Delegate via CLI subprocess (isolation).
 
     Runs forge in a separate process for full isolation.
@@ -235,7 +239,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Forge Subagent Test")
     parser.add_argument("prompt", help="Prompt to run")
     parser.add_argument("-w", "--workspace", default="poc")
-    parser.add_argument("-m", "--model", default="gemma3:4b")
+    parser.add_argument(
+        "-m",
+        "--model",
+        default="hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
+    )
     args = parser.parse_args()
 
     result = delegate(args.prompt, workspace=args.workspace, model=args.model)

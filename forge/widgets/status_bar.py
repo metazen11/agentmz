@@ -20,14 +20,14 @@ class StatusBar(Static):
     """
 
     workspace: reactive[str] = reactive("poc")
-    model: reactive[str] = reactive("gemma3:4b")
+    model: reactive[str] = reactive("hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M")
     status: reactive[str] = reactive("")
     running: reactive[bool] = reactive(False)
 
     def __init__(
         self,
         workspace: str = "poc",
-        model: str = "gemma3:4b",
+        model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
         **kwargs,
     ):
         super().__init__(**kwargs)

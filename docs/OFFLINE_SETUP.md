@@ -52,14 +52,14 @@ Start the Ollama container and pull the required models:
 ```bash
 docker compose up -d ollama
 
-# Pull coding model (default for agents)
-docker exec -it agentic-ollama ollama pull qwen3-coder:latest
+# Pull coding model (project default)
+docker exec -it agentic-ollama ollama pull hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 
 # Pull vision model (for screenshot analysis)
 docker exec -it agentic-ollama ollama pull qwen3-vl
 
 # Test the model
-docker exec -it agentic-ollama ollama run qwen3-coder:latest "Hello"
+docker exec -it agentic-ollama ollama run hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M "Hello"
 ```
 
 ## 4. Configuring Goose
@@ -72,7 +72,7 @@ providers:
   my_ollama:
     type: ollama
     host: http://localhost:11434
-    model: qwen3-coder:latest
+    model: hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M
 ```
 
 ## 5. Running Agents

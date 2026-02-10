@@ -36,7 +36,7 @@ class ForgeApp(App):
     def __init__(
         self,
         workspace: str = "poc",
-        model: str = "gemma3:4b",
+        model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
         ollama_url: str = "http://localhost:11435",
         max_iters: int = 6,
         timeout: int = 120,

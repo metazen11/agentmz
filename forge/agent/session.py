@@ -56,6 +56,7 @@ class Session:
 
     # Model context sizes (approximate)
     MODEL_CONTEXTS = {
+        "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M": 32768,
         "gemma3:4b": 8192,
         "qwen3:1.7b": 32768,
         "qwen3-vl:8b": 32768,
@@ -66,7 +67,7 @@ class Session:
 
     def __init__(
         self,
-        model: str = "gemma3:4b",
+        model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
         max_history: int = 10,
         system_prompt: Optional[str] = None,
     ):
@@ -193,7 +194,7 @@ class Session:
     def from_dict(cls, data: dict) -> "Session":
         """Deserialize session from dict."""
         session = cls(
-            model=data.get("model", "gemma3:4b"),
+            model=data.get("model", "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M"),
             max_history=data.get("max_history", 10),
         )
         for m in data.get("messages", []):

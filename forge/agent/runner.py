@@ -251,7 +251,7 @@ def _run_fallback_with_results(
 def run_once(
     prompt: str,
     workspace: str = "poc",
-    model: str = "gemma3:4b",
+    model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
     ollama_url: str = "http://localhost:11435",
     max_iters: int = 6,
     timeout: int = 120,
@@ -390,7 +390,7 @@ def run_with_session(
 def run_streaming(
     prompt: str,
     workspace: str = "poc",
-    model: str = "gemma3:4b",
+    model: str = "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
     ollama_url: str = "http://localhost:11435",
     max_iters: int = 6,
     timeout: int = 120,

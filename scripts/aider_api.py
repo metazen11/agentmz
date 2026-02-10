@@ -21,7 +21,7 @@ Context Sources (aggregated by ProjectContext):
 Environment Variables:
   OLLAMA_API_BASE   - Ollama URL (default: http://localhost:11434)
   AIDER_MODEL       - Model for aider edits (default: ollama_chat/qwen3:4b)
-  AGENT_MODEL       - Model for orchestration (default: qwen3:1.7b)
+  AGENT_MODEL       - Model for orchestration (default: hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M)
   MAX_ITERATIONS    - Max agent loop iterations (default: 20)
   WORKSPACES_DIR    - Base path for workspaces
 """
@@ -81,8 +81,14 @@ class Config:
     def reload(self):
         """Reload config from environment variables."""
         self.ollama_api_base = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
-        self.aider_model = os.environ.get("AIDER_MODEL", "ollama_chat/qwen3:1.7b")
-        self.agent_model = os.environ.get("AGENT_MODEL", "qwen3:1.7b")
+        self.aider_model = os.environ.get(
+            "AIDER_MODEL",
+            "ollama_chat/hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
+        )
+        self.agent_model = os.environ.get(
+            "AGENT_MODEL",
+            "hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M",
+        )
         self.vision_model = os.environ.get("VISION_MODEL", "")
         self.vision_model_regex = os.environ.get(
             "VISION_MODEL_REGEX",

@@ -1,6 +1,6 @@
 # Session Handoff
 
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-10
 **Branch:** `main`
 
 ---
@@ -52,6 +52,17 @@
 - Added startup automation defaults in `.env` and dynamic VRAM/disk-guard + auto-pull logic in `start.sh`.
 - `docker/docker-compose.yml` now reads `OLLAMA_MAX_VRAM` from env (override via `start.sh` detection).
 - Added Proactivity Protocol to `AGENTS.md`.
+
+## Latest Update (2026-02-10)
+
+- Switched default model to `hf.co/Qwen/Qwen3-VL-4B-Instruct-GGUF:Q4_K_M` across configs/docs.
+- Updated defaults in `.env`, `start.sh`, `install.sh`, `AGENTS.md`, `README.md`, `llm.md`, and Forge defaults.
+- Added model context entry for Qwen3-VL 4B GGUF in `forge/agent/session.py`.
+- Updated vision default in `scripts/mcp_vision_server.py`.
+- Ran `./start.sh --no-browser` to bring containers up; Ollama auto-pull still downloading `qwen2.5-coder:3b` (Q4) at last check.
+- Attempted `pip install -r requirements.txt` but aborted due to long dependency backtracking.
+- `pytest tests/ -v` completed with extensive failures/errors (services/health/Playwright/integration); see latest run output.
+- `ruff check .` could not run because `ruff` not installed in `venv`.
 
 ---
 
