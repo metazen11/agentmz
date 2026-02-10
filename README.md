@@ -5,6 +5,11 @@ Minimal agentic task system with AI-powered code editing via Aider and local LLM
 ## Quick Start
 
 ```bash
+# Smart startup (tries start, installs deps if needed, then starts)
+./smart_startup.sh
+# or
+node smart_startup.js
+
 # One-command installation (creates venv, starts services, opens browser)
 ./install.sh
 

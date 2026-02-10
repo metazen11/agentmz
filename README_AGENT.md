@@ -5,13 +5,18 @@ A self-contained AI coding agent stack that auto-installs, configures, and runs 
 ## Quick Start
 
 ```bash
-# 1. Start the stack (auto-installs everything)
+# 1. Smart startup (installs deps if needed, then starts)
+./smart_startup.sh
+# or
+node smart_startup.js
+
+# 2. Start the stack directly (auto-installs everything)
 ./start.sh
 
-# 2. Reload shell to get 'agent' command
+# 3. Reload shell to get 'agent' command
 source ~/.bashrc
 
-# 3. Start coding
+# 4. Start coding
 agent
 ```
 

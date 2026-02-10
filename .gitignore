@@ -1,4 +1,5 @@
 *.deb
+*.bak
 .aider*
 .env
 .env_bak*
